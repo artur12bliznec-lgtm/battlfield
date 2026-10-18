@@ -323,7 +323,13 @@ function show(id) {
   $('title').textContent = entry.name;
   $('subtitle').textContent = `${entry.group} · ${entry.note}`;
   document.querySelectorAll('.model-button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.id === entry.id)));
-  if (!bare) history.replaceState(null, '', `#${entry.id}`);
+  if (!bare) {
+    try {
+      history.replaceState(null, '', `#${entry.id}`);
+    } catch {
+      // во встроенной песочнице адрес может быть недоступен — не страшно
+    }
+  }
 }
 
 function renderList() {

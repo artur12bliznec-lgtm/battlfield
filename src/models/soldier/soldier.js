@@ -24,8 +24,10 @@ function socket(name, position, xAxis, yAxis, zAxis) {
  *   socket_weapon_r — в правой кисти; совместите с ним узел grip_r оружия;
  *   socket_weapon_l — в левой кисти; для подгонки под grip_l (IK);
  *   eyes            — точка между глаз, для камеры от первого лица.
+ *
+ * animations: false — не запекать клипы (если позы считаются на лету).
  */
-export function createSoldier(factionId) {
+export function createSoldier(factionId, { animations = true } = {}) {
   const faction = FACTIONS[factionId];
   for (const [key, spec] of Object.entries(faction.colors)) defineMaterial(`${faction.id}_${key}`, spec);
 
@@ -49,6 +51,6 @@ export function createSoldier(factionId) {
   bones.Head.add(anchor('eyes', [0, 0.092, 0.09]));
 
   root.userData = { kind: 'soldier', faction: faction.id, factionName: faction.name, team: faction.team, bones: BONES.length };
-  root.animations = bakeClips(root);
+  root.animations = animations ? bakeClips(root) : [];
   return root;
 }

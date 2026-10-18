@@ -337,8 +337,10 @@ export function bakeClips(root) {
     ['Pistol_Walk', 'walk', createPistol],
   ];
   const names = Object.keys(rig.bones);
+  const weapons = new Map(); // одно оружие на все клипы с ним
   const clips = plan.map(([clipName, motion, createWeapon]) => {
-    rig.attach(createWeapon ? createWeapon() : null);
+    if (createWeapon && !weapons.has(createWeapon)) weapons.set(createWeapon, createWeapon());
+    rig.attach(createWeapon ? weapons.get(createWeapon) : null);
     const kind = weaponKind(rig.weapon);
     const { duration } = MOTIONS[motion];
     const frames = Math.round(duration * fps);

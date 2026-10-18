@@ -21,7 +21,7 @@ export function createLineup() {
     { faction: 'alliance', x: -1.05, turn: -0.45, weapon: createAssaultRifle, motion: 'aim', t: 0.6 },
     { faction: 'coalition', x: 1.05, turn: 0.55, weapon: createMachineGun, motion: 'aim', t: 1.7 },
   ].map((spec) => {
-    const soldier = createSoldier(spec.faction);
+    const soldier = createSoldier(spec.faction, { animations: false });
     soldier.position.x = spec.x;
     soldier.rotation.y = spec.turn;
     scene.add(soldier);
