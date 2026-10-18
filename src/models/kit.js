@@ -302,14 +302,44 @@ function dropDegenerate(geometry) {
   return result;
 }
 
-/** Подготовка детали к слиянию: нормали с порогом сглаживания crease (в градусах). */
-function prepare(geometry, crease) {
+/**
+ * Текстурные координаты «кубической проекцией»: каждый треугольник берёт узор
+ * с той стороны, куда он больше всего смотрит. Для камуфляжа швы незаметны.
+ * scale — повторов узора на метр (0 — нулевые координаты для деталей без текстуры).
+ */
+function boxUV(geometry, scale) {
+  const pos = geometry.attributes.position;
+  const uv = new Float32Array(pos.count * 2);
+  if (scale) {
+    const v = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()];
+    const e1 = new THREE.Vector3();
+    const e2 = new THREE.Vector3();
+    for (let i = 0; i < pos.count; i += 3) {
+      v.forEach((p, k) => p.fromBufferAttribute(pos, i + k));
+      const n = e1.subVectors(v[1], v[0]).cross(e2.subVectors(v[2], v[0]));
+      const [ax, ay, az] = [Math.abs(n.x), Math.abs(n.y), Math.abs(n.z)];
+      v.forEach((p, k) => {
+        const [a, b] = ax >= ay && ax >= az ? [p.z, p.y] : ay >= az ? [p.x, p.z] : [p.x, p.y];
+        uv[(i + k) * 2] = a * scale;
+        uv[(i + k) * 2 + 1] = b * scale;
+      });
+    }
+  }
+  geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+}
+
+/**
+ * Подготовка детали к слиянию: нормали с порогом сглаживания crease (в градусах).
+ * uvScale — null (без текстурных координат) или повторов узора на метр.
+ */
+function prepare(geometry, crease, uvScale) {
   let g = geometry.index ? geometry.toNonIndexed() : geometry;
   g.deleteAttribute('uv');
   g.deleteAttribute('normal');
   g = dropDegenerate(g);
   g = toCreasedNormals(g, crease * DEG);
   g.normalizeNormals();
+  if (uvScale !== null) boxUV(g, uvScale);
   return mergeVertices(g);
 }
 
@@ -346,10 +376,14 @@ export class Parts {
   }
 
   buildGeometry() {
+    // если хоть один материал с узором — текстурные координаты нужны всем деталям
+    const tile = (name) => getMaterial(name).userData.tile ?? 0;
+    const textured = this.items.some((item) => tile(item.material));
     const byMaterial = new Map();
     for (const item of this.items) {
       if (!byMaterial.has(item.material)) byMaterial.set(item.material, []);
-      byMaterial.get(item.material).push(prepare(item.geometry, item.crease));
+      const uvScale = textured ? (tile(item.material) ? 1 / tile(item.material) : 0) : null;
+      byMaterial.get(item.material).push(prepare(item.geometry, item.crease, uvScale));
     }
     const names = [...byMaterial.keys()];
     const geometry = mergeGeometries(

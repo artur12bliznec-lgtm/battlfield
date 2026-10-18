@@ -1,20 +1,18 @@
 import { createAssaultRifle } from './weapons/assaultRifle.js';
 import { createRifle } from './weapons/rifle.js';
+import { createSniperRifle } from './weapons/sniperRifle.js';
 import { createMachineGun } from './weapons/machineGun.js';
 import { createPistol } from './weapons/pistol.js';
 import { createBandage } from './items/bandage.js';
 import { createSoldier } from './soldier/soldier.js';
-import { createSoldierController, MOTIONS } from './soldier/animation.js';
+import { createSoldierController, MOTIONS, CLIPS } from './soldier/animation.js';
 import { createLineup, createLineupController } from './lineup.js';
-import { DEG } from './kit.js';
+import { bipodLegRotation } from './weapons/handling.js';
 
 /** Раскладывает/складывает сошки (узлы bipod_leg_l / bipod_leg_r). */
 function setBipod(model, deployed, foldedForward) {
   for (const name of model.userData.bipod ?? []) {
-    const leg = model.getObjectByName(name);
-    const side = name.endsWith('_l') ? 1 : -1;
-    const tilt = foldedForward ? 80 * DEG : -100 * DEG;
-    leg.rotation.set(deployed ? tilt : 0, 0, deployed ? side * 12 * DEG : 0, 'ZXY');
+    model.getObjectByName(name).rotation.copy(bipodLegRotation(name, foldedForward, deployed ? 1 : 0));
   }
 }
 
@@ -22,6 +20,7 @@ const WEAPONS = {
   assault_rifle: createAssaultRifle,
   rifle: createRifle,
   machine_gun: createMachineGun,
+  sniper_rifle: createSniperRifle,
   pistol: createPistol,
 };
 
@@ -35,6 +34,7 @@ const soldierOptions = [
       ['assault_rifle', 'Автомат'],
       ['rifle', 'Винтовка'],
       ['machine_gun', 'Пулемёт'],
+      ['sniper_rifle', 'Снайперская винтовка'],
       ['pistol', 'Пистолет'],
       ['none', 'Без оружия'],
     ],
@@ -46,6 +46,7 @@ const soldierOptions = [
     label: 'Анимация',
     default: 'idle',
     choices: [['tpose', 'T-поза (как в файле)'], ...Object.entries(MOTIONS).map(([id, m]) => [id, m.label])],
+    // движение можно задать и в адресе: ?motion=reload
     apply: (model, value, controller) => controller.setMotion(value),
   },
 ];
@@ -82,8 +83,9 @@ export const CATALOG = [
     note: 'Синие · плитник, рация, наушники',
     swatch: 'alliance',
     view: 'iso',
-    create: () => createSoldier('alliance'),
+    create: (preview) => createSoldier('alliance', { animations: !preview }),
     options: soldierOptions,
+    clips: CLIPS.length,
     controller: (model) => createSoldierController(model, WEAPONS),
   },
   {
@@ -94,8 +96,9 @@ export const CATALOG = [
     note: 'Красные · разгрузка, рюкзак, балаклава',
     swatch: 'coalition',
     view: 'iso',
-    create: () => createSoldier('coalition'),
+    create: (preview) => createSoldier('coalition', { animations: !preview }),
     options: soldierOptions,
+    clips: CLIPS.length,
     controller: (model) => createSoldierController(model, WEAPONS),
   },
   {
@@ -112,10 +115,9 @@ export const CATALOG = [
     kind: 'weapon',
     group: 'Оружие',
     name: 'Винтовка',
-    note: 'Снайперская, с оптикой · 8,6 мм',
+    note: 'M4-образная · 5,56 мм',
     view: 'side',
     create: createRifle,
-    options: [bipodOption(true)],
   },
   {
     id: 'machine_gun',
@@ -126,6 +128,16 @@ export const CATALOG = [
     view: 'side',
     create: createMachineGun,
     options: [bipodOption(false)],
+  },
+  {
+    id: 'sniper_rifle',
+    kind: 'weapon',
+    group: 'Оружие',
+    name: 'Снайперская винтовка',
+    note: 'Для разведчика, с оптикой · 8,6 мм',
+    view: 'side',
+    create: createSniperRifle,
+    options: [bipodOption(true)],
   },
   {
     id: 'pistol',

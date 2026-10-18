@@ -1,356 +1,630 @@
 import * as THREE from 'three';
-import { DEG } from '../kit.js';
+import { Rig, euler, localMatrix, THIGH, SHIN } from './rig.js';
+import { RELOAD, reloadHand, reloadMagazine } from '../weapons/handling.js';
 import { createAssaultRifle } from '../weapons/assaultRifle.js';
 import { createPistol } from '../weapons/pistol.js';
+import { createBandage } from '../items/bandage.js';
 
 /*
- * Позы и анимации бойца.
+ * Движения бойца.
  *
- * Ноги и корпус двигаются процедурно (синусоиды шага), руки с оружием —
- * через двухзвенную инверсную кинематику: правая кисть держит рукоять
- * (grip_r), левая — цевьё (grip_l). Поэтому одна и та же анимация подходит
- * к любому оружию. Для .glb анимации «запекаются» в ключевые кадры.
+ * Корпус и ноги двигаются процедурно: стопы ставятся инверсной кинематикой
+ * по шаговому циклу (в любом направлении), руки с оружием — тоже через IK:
+ * правая кисть держит рукоять (grip_r), левая — цевьё (grip_l). Поэтому каждое
+ * движение подходит к любому оружию. Для .glb движения «запекаются» в клипы.
  */
 
-const UPPER_ARM = 0.285;
-const FOREARM = 0.255;
-const ANKLE_HEIGHT = 0.09;
-const RIGHT_EYE = new THREE.Vector3(-0.032, 0.092, 0.09); // в системе кости Head
 const ONE = new THREE.Vector3(1, 1, 1);
+const RIGHT_EYE = new THREE.Vector3(-0.032, 0.092, 0.09); // в системе кости Head
+const TAU = Math.PI * 2;
+const clamp01 = (x) => Math.min(1, Math.max(0, x));
+const smooth = (x) => {
+  const k = clamp01(x);
+  return k * k * (3 - 2 * k);
+};
+const lerp = THREE.MathUtils.lerp;
 
-const tmpM = new THREE.Matrix4();
-
-function localMatrix(node) {
-  return new THREE.Matrix4().compose(node.position, node.quaternion, ONE);
+/** Значение по ключам [[t, v], ...] с плавными переходами; v — число или массив чисел. */
+function keys(t, list) {
+  if (t <= list[0][0]) return list[0][1];
+  for (let i = 0; i < list.length - 1; i++) {
+    const [t0, v0] = list[i];
+    const [t1, v1] = list[i + 1];
+    if (t <= t1) {
+      const k = smooth((t - t0) / (t1 - t0));
+      return Array.isArray(v0) ? v0.map((a, j) => a + (v1[j] - a) * k) : v0 + (v1 - v0) * k;
+    }
+  }
+  return list[list.length - 1][1];
 }
 
-/** Поворот, переводящий ось кости (±X в T-позе) в направление dir; ось Y кости — к нормали плоскости сгиба. */
-function limbBasis(dir, normal, sign) {
-  const x = dir.clone().normalize().multiplyScalar(sign);
-  const y = normal.clone().multiplyScalar(sign);
-  y.addScaledVector(x, -y.dot(x)).normalize();
-  const z = x.clone().cross(y);
-  return new THREE.Quaternion().setFromRotationMatrix(tmpM.makeBasis(x, y, z));
-}
-
-export class Rig {
-  constructor(root) {
-    this.root = root;
-    this.bones = {};
-    root.traverse((node) => {
-      if (node.isBone) this.bones[node.name] = node;
-    });
-    this.rest = Object.fromEntries(Object.entries(this.bones).map(([name, bone]) => [name, bone.position.clone()]));
-    this.socketR = root.getObjectByName('socket_weapon_r');
-    this.socketL = root.getObjectByName('socket_weapon_l');
-    this.weapon = null;
-  }
-
-  /** Вернуть T-позу. */
-  reset() {
-    for (const [name, bone] of Object.entries(this.bones)) {
-      bone.position.copy(this.rest[name]);
-      bone.quaternion.identity();
-    }
-    this.root.updateMatrixWorld(true);
-  }
-
-  /** Локальный поворот кости в градусах относительно T-позы. */
-  rotate(name, x = 0, y = 0, z = 0, order = 'XYZ') {
-    this.bones[name].quaternion.setFromEuler(new THREE.Euler(x * DEG, y * DEG, z * DEG, order));
-  }
-
-  setWorldQuaternion(bone, q) {
-    bone.parent.updateWorldMatrix(true, false);
-    const parent = bone.parent.getWorldQuaternion(new THREE.Quaternion());
-    bone.quaternion.copy(parent.invert().multiply(q));
-    bone.updateMatrixWorld(true);
-  }
-
-  /**
-   * Двухзвенная IK: запястье — в точку wrist (мир), локоть — в сторону pole,
-   * затем кисть поворачивается в мировой поворот handQ.
-   */
-  solveArm(side, wrist, pole, handQ) {
-    const sign = side === 'Left' ? 1 : -1;
-    const arm = this.bones[`${side}Arm`];
-    const fore = this.bones[`${side}ForeArm`];
-    arm.updateWorldMatrix(true, false);
-    const S = arm.getWorldPosition(new THREE.Vector3());
-    const toWrist = wrist.clone().sub(S);
-    const d = THREE.MathUtils.clamp(toWrist.length(), 0.06, UPPER_ARM + FOREARM - 1e-4);
-    const u = toWrist.normalize();
-    const pv = pole.clone().sub(S);
-    pv.addScaledVector(u, -pv.dot(u)).normalize();
-    const cosA = THREE.MathUtils.clamp((UPPER_ARM ** 2 + d * d - FOREARM ** 2) / (2 * UPPER_ARM * d), -1, 1);
-    const elbow = S.clone().addScaledVector(u, UPPER_ARM * cosA).addScaledVector(pv, UPPER_ARM * Math.sqrt(1 - cosA * cosA));
-    const end = S.clone().addScaledVector(u, d);
-    const normal = u.clone().cross(pv).normalize();
-    this.setWorldQuaternion(arm, limbBasis(elbow.clone().sub(S), normal, sign));
-    this.setWorldQuaternion(fore, limbBasis(end.sub(elbow), normal, sign));
-    if (handQ) this.setWorldQuaternion(this.bones[`${side}Hand`], handQ);
-  }
-
-  /** Вложить оружие в правую руку: узел grip_r оружия совпадает с socket_weapon_r. */
-  attach(weapon) {
-    if (this.weapon) this.socketR.remove(this.weapon);
-    this.weapon = weapon;
-    if (!weapon) return;
-    localMatrix(weapon.getObjectByName('grip_r')).invert().decompose(weapon.position, weapon.quaternion, weapon.scale);
-    this.socketR.add(weapon);
-  }
-
-  /** Мировая матрица точки крепления оружия, если корень оружия стоит в weaponMatrix. */
-  weaponPoint(weaponMatrix, name) {
-    return weaponMatrix.clone().multiply(localMatrix(this.weapon.getObjectByName(name)));
-  }
-
-  /** Руки берут оружие так, чтобы оно оказалось в мировой позе weaponMatrix. */
-  holdAt(weaponMatrix, poleR, poleL) {
-    const hand = this.weaponPoint(weaponMatrix, 'grip_r').multiply(localMatrix(this.socketR).invert());
-    this.solveArm('Right', new THREE.Vector3().setFromMatrixPosition(hand), poleR, new THREE.Quaternion().setFromRotationMatrix(hand));
-    this.root.updateMatrixWorld(true);
-    const gripL = this.weapon.getObjectByName('grip_l');
-    if (!gripL) return;
-    const left = gripL.matrixWorld.clone().multiply(localMatrix(this.socketL).invert());
-    this.solveArm('Left', new THREE.Vector3().setFromMatrixPosition(left), poleL, new THREE.Quaternion().setFromRotationMatrix(left));
-  }
-
-  /** Поставить ступни на землю: сдвинуть таз так, чтобы нижняя точка стоп была на y = 0. */
-  groundFeet() {
-    this.root.updateMatrixWorld(true);
-    let lowest = Infinity;
-    for (const side of ['Left', 'Right']) {
-      const foot = this.bones[`${side}Foot`];
-      for (const p of [[0, -ANKLE_HEIGHT, -0.07], [0, -ANKLE_HEIGHT + 0.005, 0.19]]) {
-        lowest = Math.min(lowest, foot.localToWorld(new THREE.Vector3(...p)).y);
-      }
-    }
-    const rootY = this.root.getWorldPosition(new THREE.Vector3()).y;
-    this.bones.Hips.position.y -= lowest - rootY;
-    this.root.updateMatrixWorld(true);
-  }
-
-  /** Повернуть голову так, чтобы взгляд был направлен вдоль +Z корня (с наклоном pitch и креном roll). */
-  lookForward(pitch = 0, roll = 0, neckShare = 0.4) {
-    const rootQ = this.root.getWorldQuaternion(new THREE.Quaternion());
-    const target = rootQ.multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(pitch * DEG, 0, roll * DEG, 'YXZ')));
-    const neck = this.bones.Neck;
-    const chestQ = neck.parent.getWorldQuaternion(new THREE.Quaternion());
-    neck.quaternion.identity().slerp(chestQ.clone().invert().multiply(target), neckShare);
-    neck.updateMatrixWorld(true);
-    this.setWorldQuaternion(this.bones.Head, target);
-  }
+function blendMatrices(a, b, k) {
+  const pa = new THREE.Vector3();
+  const pb = new THREE.Vector3();
+  const qa = new THREE.Quaternion();
+  const qb = new THREE.Quaternion();
+  a.decompose(pa, qa, new THREE.Vector3());
+  b.decompose(pb, qb, new THREE.Vector3());
+  return new THREE.Matrix4().compose(pa.lerp(pb, k), qa.slerp(qb, k), ONE);
 }
 
 /* ------------------------------------------------------------------ */
-/* Корпус и ноги                                                       */
+/* Ноги                                                                */
 /* ------------------------------------------------------------------ */
 
-function legs(rig, l, r) {
-  for (const [side, leg] of [['Left', l], ['Right', r]]) {
-    rig.rotate(`${side}UpLeg`, leg.thigh, leg.twist ?? 0, leg.spread ?? 0);
-    rig.rotate(`${side}Leg`, leg.knee, 0, 0);
-    rig.rotate(`${side}Foot`, -(leg.thigh + leg.knee) + (leg.foot ?? 0), 0, -(leg.spread ?? 0));
+/**
+ * Поставить обе стопы. Если таз слишком высоко и нога не дотягивается до
+ * опорной стопы, таз опускается — стопы всегда стоят на земле.
+ */
+function feet(rig, left, right, knees = [[0.12, 0, 1], [-0.12, 0, 1]]) {
+  rig.root.updateMatrixWorld(true);
+  let deficit = 0;
+  for (const [side, foot] of [['Left', left], ['Right', right]]) {
+    if ((foot.lift ?? 0) > 0.02) continue;
+    const hip = rig.bones[`${side}UpLeg`].getWorldPosition(new THREE.Vector3());
+    const ankle = rig.world(foot.x, 0.09 + (foot.lift ?? 0), foot.z);
+    deficit = Math.max(deficit, hip.distanceTo(ankle) - (THIGH + SHIN - 0.012));
   }
+  if (deficit > 0) {
+    rig.bones.Hips.position.y -= deficit;
+    rig.root.updateMatrixWorld(true);
+  }
+  rig.placeFoot('Left', left, knees[0]);
+  rig.placeFoot('Right', right, knees[1]);
 }
 
-/** Стойка с дыханием. */
-function standBody(rig, t) {
-  const breath = Math.sin((t / 3) * Math.PI * 2);
-  rig.rotate('Hips', 0, 0, 0);
-  rig.rotate('Spine', 2 + breath * 0.6, 0, 0);
-  rig.rotate('Chest', 1 + breath * 0.9, 0, 0);
-  legs(rig, { thigh: -2, knee: 5, spread: 4 }, { thigh: 1, knee: 4, spread: -4, twist: -6 });
+/**
+ * Шаговый цикл на месте. stride — путь стопы за время опоры (м), period —
+ * полный цикл из двух шагов (с), duty — доля опоры, lift — подъём стопы,
+ * drop — насколько опущен таз, bob — покачивание таза, lean — наклон корпуса,
+ * width — расстановка стоп, center — смещение опоры назад (бег), heel/toe —
+ * перекат стопы, sway — раскачка в стороны, yaw — поворот таза, bounce — бег.
+ * Скорость движения, при которой стопы не скользят: stride / (duty · period).
+ */
+export const GAITS = {
+  walk: { period: 0.9, stride: 0.55, duty: 0.6, lift: 0.09, drop: 0.04, bob: 0.018, lean: 4, width: 0.11, center: 0, heel: 14, toe: 26, sway: 0.02, yaw: 6 },
+  jog: { period: 0.72, stride: 0.8, duty: 0.42, lift: 0.17, drop: 0.07, bob: 0.03, lean: 9, width: 0.1, center: -0.08, heel: 8, toe: 34, sway: 0.015, yaw: 8, bounce: true },
+  sprint: { period: 0.62, stride: 0.95, duty: 0.34, lift: 0.26, drop: 0.08, bob: 0.04, lean: 16, width: 0.09, center: -0.12, heel: 4, toe: 45, sway: 0.012, yaw: 10, bounce: true },
+  crouch: { period: 1.1, stride: 0.5, duty: 0.65, lift: 0.1, drop: 0.36, bob: 0.015, lean: 18, width: 0.15, center: 0, heel: 8, toe: 20, sway: 0.03, yaw: 5 },
+};
+
+export const gaitSpeed = (g) => g.stride / (g.duty * g.period);
+
+/** Положение одной стопы в шаговом цикле (ph — фаза 0..1 этой стопы). */
+function gaitFoot(ph, g) {
+  if (ph < g.duty) {
+    const s = ph / g.duty;
+    const roll = s < 0.15 ? -1 + s / 0.15 : s > 0.65 ? (s - 0.65) / 0.35 : 0;
+    return { along: g.center + g.stride * (0.5 - s), lift: 0, roll };
+  }
+  const s = (ph - g.duty) / (1 - g.duty);
+  return { along: g.center + g.stride * (smooth(s) - 0.5), lift: g.lift * Math.sin(Math.PI * s), roll: lerp(0.8, -0.6, smooth(s)) };
 }
 
-/** Стойка для стрельбы из винтовки: корпус развёрнут, левая нога впереди. */
-function aimBody(rig, t) {
-  const sway = Math.sin((t / 3) * Math.PI * 2);
-  rig.rotate('Hips', 0, -28, 0, 'YXZ');
-  rig.rotate('Spine', 8, -8 + sway * 0.6, 0, 'YXZ');
-  rig.rotate('Chest', 7 + sway * 0.5, -6, 0, 'YXZ');
-  rig.rotate('RightShoulder', 0, 12, -10); // плечо поднято и выведено вперёд под приклад
-  rig.rotate('LeftShoulder', 0, -8, 0);
-  legs(rig, { thigh: -16, knee: 14, spread: 6, twist: 18 }, { thigh: 9, knee: 10, spread: -9, twist: 8 });
-}
-
-/** Стойка «равнобедренный треугольник» для пистолета. */
-function pistolAimBody(rig, t) {
-  const sway = Math.sin((t / 3) * Math.PI * 2);
-  rig.rotate('Hips', 0, -6, 0, 'YXZ');
-  rig.rotate('Spine', 6, 2 + sway * 0.5, 0, 'YXZ');
-  rig.rotate('Chest', 5, 3, 0, 'YXZ');
-  legs(rig, { thigh: -10, knee: 12, spread: 7, twist: 6 }, { thigh: 6, knee: 10, spread: -7, twist: -4 });
-}
-
-/** Цикл шага: phase — 0..1, g — параметры походки. */
-function gaitBody(rig, phase, g) {
-  const p = phase * Math.PI * 2;
-  rig.rotate('Hips', g.lean * 0.3, -g.hipYaw * Math.sin(p), g.hipRoll * Math.cos(p), 'YXZ');
-  rig.rotate('Spine', g.lean * 0.5, g.hipYaw * 0.5 * Math.sin(p), 0, 'YXZ');
-  rig.rotate('Chest', g.lean * 0.5 + g.bounce * Math.cos(2 * p), g.hipYaw * 0.6 * Math.sin(p), 0, 'YXZ');
-  const leg = (ph) => {
-    const swing = Math.max(0, Math.cos(ph));
+/** Корпус и ноги при движении в направлении dir = [x, z] (система корня). */
+function gaitBody(rig, phase, g, dir) {
+  const [dx, dz] = dir;
+  const p = phase * TAU;
+  const fwd = Math.abs(dz) > 0.5 ? Math.sign(dz) : 0;
+  const bobPhase = g.bounce ? p * 2 - g.duty * TAU : p * 2;
+  const bob = -g.bob * (1 + Math.cos(bobPhase)) * 0.5;
+  rig.body({
+    hips: [g.sway * Math.sin(p), -g.drop + bob, 0],
+    hipsRot: [g.lean * 0.4, g.yaw * Math.sin(p) * (fwd || 0.4), -3 * Math.sin(p)],
+    spine: [g.lean * 0.4, -g.yaw * 0.5 * Math.sin(p) * (fwd || 0.4), 0],
+    chest: [g.lean * 0.3 + 1.5 * Math.cos(2 * p), -g.yaw * 0.4 * Math.sin(p) * (fwd || 0.4), 0],
+  });
+  // боком шаг короче и стопы шире, чтобы ноги не перекрещивались
+  const lateral = Math.abs(dx);
+  const width = g.width + 0.06 * lateral;
+  const reach = 1 - 0.45 * lateral;
+  const place = (ph, side) => {
+    const f = gaitFoot(ph % 1, g);
+    const roll = f.roll * (fwd || 0.35);
     return {
-      thigh: -g.thigh * Math.sin(ph) - g.lean * 0.3,
-      knee: g.kneeBase + g.knee * swing ** 1.5,
-      foot: g.toe * Math.max(0, -Math.sin(ph)) * Math.max(0, -Math.cos(ph)) - 8 * swing,
-      spread: 2,
+      x: side * width + dx * f.along * reach,
+      z: dz * f.along,
+      lift: f.lift,
+      pitch: roll > 0 ? roll * g.toe : roll * g.heel,
+      yaw: side * 6,
     };
   };
-  const left = leg(p);
-  const right = leg(p + Math.PI);
-  right.spread = -2;
-  legs(rig, left, right);
+  feet(rig, place(phase, 1), place(phase + 0.5, -1));
 }
 
-const WALK = { thigh: 24, knee: 48, kneeBase: 6, toe: 30, lean: 3, hipYaw: 6, hipRoll: 3, bounce: 1, armSwing: 18 };
-const RUN = { thigh: 42, knee: 95, kneeBase: 14, toe: 45, lean: 12, hipYaw: 9, hipRoll: 4, bounce: 2, armSwing: 38 };
+/** Стойка с дыханием. stagger — левая нога впереди. */
+function standBody(rig, t, { stagger = 0.05 } = {}) {
+  const breath = Math.sin((t / 3) * TAU);
+  rig.body({ hips: [0, -0.025, 0], spine: [2 + breath * 0.6, 0, 0], chest: [1 + breath * 0.9, 0, 0] });
+  feet(rig, { x: 0.11, z: stagger, yaw: 8 }, { x: -0.11, z: -stagger, yaw: -12 });
+}
 
-/** Руки без оружия: висят вдоль тела и качаются при ходьбе. */
-function freeArms(rig, swing = 0, bend = 15) {
-  rig.rotate('LeftShoulder', 0, 0, 0);
-  rig.rotate('RightShoulder', 0, 0, 0);
-  rig.rotate('LeftArm', swing, 0, -76);
-  rig.rotate('RightArm', -swing, 0, 76);
-  rig.rotate('LeftForeArm', 0, -bend - Math.max(0, -swing) * 0.8, 0);
-  rig.rotate('RightForeArm', 0, bend + Math.max(0, swing) * 0.8, 0);
-  rig.rotate('LeftHand', 0, 0, 0);
-  rig.rotate('RightHand', 0, 0, 0);
+/** Стойка стрелка: корпус развёрнут, левая нога впереди, правое плечо под прикладом. */
+function aimBody(rig, t) {
+  const sway = Math.sin((t / 3) * TAU);
+  rig.body({ hips: [0, -0.045, 0], hipsRot: [0, -28, 0], spine: [8, -8 + sway * 0.6, 0], chest: [7 + sway * 0.5, -6, 0] });
+  rig.rotate('RightShoulder', 0, 12, -10);
+  rig.rotate('LeftShoulder', 0, -8, 0);
+  feet(rig, { x: 0.12, z: 0.15, yaw: -12 }, { x: -0.14, z: -0.15, yaw: -42 });
+}
+
+/** Присед стрелка: колени вперёд, левая нога чуть впереди, правая — на носке. */
+function crouchBody(rig, t) {
+  const breath = Math.sin((t / 3) * TAU);
+  rig.body({ hips: [0, -0.37, -0.04], hipsRot: [12, -14, 0], spine: [14 + breath * 0.5, -6, 0], chest: [8 + breath * 0.6, -4, 0] });
+  rig.rotate('RightShoulder', 0, 10, -8);
+  feet(rig, { x: 0.13, z: 0.14, yaw: -6 }, { x: -0.13, z: -0.12, pitch: 25, yaw: -20 }, [[0.15, 0.1, 1], [-0.25, -0.1, 1]]);
+}
+
+/** Лёжа: корпус вытянут вперёд, грудь приподнята на локтях. crawl — фаза переползания. */
+function proneBody(rig, t, crawl = null) {
+  const breath = Math.sin((t / 3) * TAU);
+  const p = crawl === null ? 0 : crawl * TAU;
+  const amount = crawl === null ? 0 : 1;
+  rig.body({
+    hips: [0.03 * Math.sin(p) * amount, 0.17 - 0.98, -0.15 + 0.04 * Math.sin(2 * p) * amount],
+    hipsRot: [82, 6 * Math.sin(p) * amount, 8 * Math.sin(p) * amount],
+    spine: [-14 + breath * 0.4, -4 * Math.sin(p) * amount, 0],
+    chest: [-16, -3 * Math.sin(p) * amount, 0],
+  });
+  // при переползании колени по очереди подтягиваются в сторону
+  const leg = (side, ph) => {
+    const pull = amount * Math.max(0, Math.sin(ph));
+    return { x: side * (0.17 + 0.2 * pull), z: -1.2 + 0.5 * pull, pitch: 75 - 20 * pull, yaw: side * (8 + 25 * pull) };
+  };
+  rig.root.updateMatrixWorld(true);
+  rig.placeFoot('Left', leg(1, p), [0.4, -1, 0]);
+  rig.placeFoot('Right', leg(-1, p + Math.PI), [-0.4, -1, 0]);
 }
 
 /* ------------------------------------------------------------------ */
-/* Положение оружия                                                    */
+/* Оружие в руках                                                      */
 /* ------------------------------------------------------------------ */
 
 /** Мировая матрица оружия, при которой его узел sight совпадает с правым глазом. */
-function aimMatrix(rig, pitch = 0) {
+function aimMatrix(rig, pitch = 0, yaw = 0) {
   const eye = rig.bones.Head.localToWorld(RIGHT_EYE.clone());
-  const q = rig.root.getWorldQuaternion(new THREE.Quaternion()).multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(pitch * DEG, 0, 0)));
+  const q = rig.rootQuaternion().multiply(euler(pitch, yaw, 0));
   const sight = rig.weapon.getObjectByName('sight').position.clone().applyQuaternion(q);
   return new THREE.Matrix4().compose(eye.sub(sight), q, ONE);
 }
 
-/** Повернуть позу оружия вокруг мировой точки pivot. */
-function rotateAbout(matrix, pivot, euler) {
-  const axisQ = new THREE.Quaternion().setFromRotationMatrix(matrix);
-  const local = new THREE.Quaternion().setFromEuler(euler);
-  const r = axisQ.clone().multiply(local).multiply(axisQ.clone().invert()); // поворот в осях оружия
-  const t1 = new THREE.Matrix4().makeTranslation(pivot.x, pivot.y, pivot.z);
-  const t0 = new THREE.Matrix4().makeTranslation(-pivot.x, -pivot.y, -pivot.z);
-  return t1.multiply(new THREE.Matrix4().makeRotationFromQuaternion(r)).multiply(t0).multiply(matrix);
+/** Повернуть позу оружия вокруг мировой точки pivot (углы — в осях оружия). */
+function rotateAbout(matrix, pivot, rotation) {
+  const axes = new THREE.Quaternion().setFromRotationMatrix(matrix);
+  const r = axes.clone().multiply(euler(...rotation)).multiply(axes.clone().invert());
+  const toPivot = new THREE.Matrix4().makeTranslation(pivot.x, pivot.y, pivot.z);
+  const fromPivot = new THREE.Matrix4().makeTranslation(-pivot.x, -pivot.y, -pivot.z);
+  return toPivot.multiply(new THREE.Matrix4().makeRotationFromQuaternion(r)).multiply(fromPivot).multiply(matrix);
 }
 
-/** Поза оружия в системе кости Chest: точка grip_r в pos, ствол развёрнут на yaw/pitch/roll. */
-function chestMatrix(rig, pos, yaw, pitch, roll) {
-  const chest = rig.bones.Chest;
-  const rootQ = rig.root.getWorldQuaternion(new THREE.Quaternion());
-  const q = rootQ.multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(pitch * DEG, yaw * DEG, roll * DEG, 'YXZ')));
-  const grip = chest.localToWorld(new THREE.Vector3(...pos));
-  const gripLocal = localMatrix(rig.weapon.getObjectByName('grip_r'));
-  return new THREE.Matrix4().compose(grip, q, ONE).multiply(gripLocal.invert());
+/** Поза оружия по положению правого хвата: grip — в системе Chest, поворот — относительно корня. */
+function gripMatrix(rig, grip, rotation) {
+  const gripLocal = localMatrix(rig.weapon.getObjectByName('grip_r')).invert();
+  return rig.chestFrame(grip, rotation).multiply(gripLocal);
 }
 
-function holdWeapon(rig, mode, kind, t) {
-  const chest = rig.bones.Chest;
-  const pole = (side, x, y, z) => rig.bones[`${side}Arm`].getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(x, y, z).applyQuaternion(chest.getWorldQuaternion(new THREE.Quaternion())));
-  let matrix;
-  if (kind === 'pistol') {
-    if (mode === 'aim') matrix = aimMatrix(rig, 0);
-    else matrix = chestMatrix(rig, [-0.03, -0.1, 0.34], 6, 28 + Math.sin(t * 2.1) * 1.5, 0);
-    rig.holdAt(matrix, pole('Right', -0.35, -0.55, -0.1), pole('Left', 0.35, -0.55, -0.1));
-    return;
-  }
-  if (mode === 'aim') {
-    matrix = aimMatrix(rig, 0);
-  } else if (mode === 'ready') {
-    const aim = aimMatrix(rig, 0);
-    const stock = rig.weaponPoint(aim, 'stock');
-    const pivot = new THREE.Vector3().setFromMatrixPosition(stock);
-    matrix = rotateAbout(aim, pivot, new THREE.Euler((32 + Math.sin(t * 2.1) * 1.2) * DEG, 14 * DEG, 0, 'YXZ'));
-  } else {
-    matrix = chestMatrix(rig, [-0.12, -0.13, 0.22], 42, 22, -24);
-  }
-  rig.holdAt(matrix, pole('Right', -0.6, -0.42, -0.2), pole('Left', 0.12, -0.7, 0.05));
+/** Опущенное к полу оружие («низкая готовность»): поворот вокруг упора приклада. */
+function readyMatrix(rig, t, pitch = 32, yaw = 14) {
+  const aim = aimMatrix(rig);
+  const pivot = new THREE.Vector3().setFromMatrixPosition(rig.weaponPoint(aim, 'stock'));
+  return rotateAbout(aim, pivot, [pitch + Math.sin(t * 2.1) * 1.2, yaw, 0]);
 }
+
+/** Отдача: оружие уходит назад и задирает ствол. */
+function recoil(matrix, amount, back, flip) {
+  return matrix.clone().multiply(new THREE.Matrix4().makeTranslation(0, 0.1 * back * amount, -back * amount)).multiply(new THREE.Matrix4().makeRotationX(-flip * amount * (Math.PI / 180)));
+}
+
+/** Направления локтей (подсказки IK) в системе грудной клетки. */
+function poles(rig, right, left) {
+  const chestQ = rig.bones.Chest.getWorldQuaternion(new THREE.Quaternion());
+  const at = (side, v) => rig.bones[`${side}Arm`].getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(...v).applyQuaternion(chestQ));
+  return [at('Right', right), at('Left', left)];
+}
+
+const LONG_POLES = [[-0.6, -0.42, -0.2], [0.12, -0.7, 0.05]];
+const PISTOL_POLES = [[-0.35, -0.55, -0.1], [0.35, -0.55, -0.1]];
+const PRONE_POLES = [[-0.4, -0.8, 0.1], [0.4, -0.8, 0.1]];
 
 /* ------------------------------------------------------------------ */
-/* Клипы                                                               */
+/* Движения                                                            */
 /* ------------------------------------------------------------------ */
-
-export const MOTIONS = {
-  idle: { label: 'Стойка', duration: 3 },
-  aim: { label: 'Прицеливание', duration: 3 },
-  walk: { label: 'Ходьба', duration: 1.1 },
-  run: { label: 'Бег', duration: 0.7 },
-};
 
 /**
- * Поставить позу: motion — 'idle' | 'aim' | 'walk' | 'run',
- * kind — 'none' | 'rifle' | 'pistol' (что в руках), t — время в секундах.
+ * Каждое движение: duration (с), loop — зациклено ли, body(ctx) — корпус и
+ * ноги, hold(ctx) — оружие (матрица оружия и подсказки локтей), look —
+ * наклон/крен/поворот головы, free(ctx) — руки, если оружия нет.
  */
-export function pose(rig, motion, kind, t) {
-  rig.reset();
-  const { duration } = MOTIONS[motion];
-  const phase = (t % duration) / duration;
-  const armed = kind !== 'none' && rig.weapon;
-  const gait = motion === 'walk' ? WALK : motion === 'run' ? RUN : null;
+const gait = (name, dir, hold) => ({
+  duration: GAITS[name].period,
+  loop: true,
+  body: ({ rig, phase }) => gaitBody(rig, phase, GAITS[name], dir),
+  hold,
+  look: () => [name === 'crouch' ? 6 : 3, 0],
+  free: ({ rig, phase }) => {
+    const swing = (name === 'sprint' ? 45 : name === 'jog' ? 32 : 16) * Math.sin(phase * TAU) * Math.abs(dir[1] || 0.5);
+    const bend = name === 'sprint' || name === 'jog' ? 75 : 18;
+    rig.freeArm('Left', { swing: -swing, bend });
+    rig.freeArm('Right', { swing, bend });
+  },
+});
 
-  if (gait) gaitBody(rig, phase, gait);
-  else if (motion === 'aim' && armed) (kind === 'pistol' ? pistolAimBody : aimBody)(rig, t);
-  else standBody(rig, t);
+const aimHold = ({ rig, kind }) => ({ matrix: aimMatrix(rig), poles: kind === 'pistol' ? PISTOL_POLES : LONG_POLES });
+const readyHold = ({ rig, t, kind }) =>
+  kind === 'pistol'
+    ? { matrix: gripMatrix(rig, [-0.03, -0.12, 0.34], [28 + Math.sin(t * 2.1) * 1.5, 6, 0]), poles: PISTOL_POLES }
+    : { matrix: readyMatrix(rig, t), poles: LONG_POLES };
+const jogHold = ({ rig, t, kind }) =>
+  kind === 'pistol'
+    ? { matrix: gripMatrix(rig, [-0.05, -0.05, 0.24], [14, 4, 0]), poles: PISTOL_POLES }
+    : { matrix: readyMatrix(rig, t, 16, 8), poles: LONG_POLES };
+const sprintHold = ({ rig, kind }) =>
+  kind === 'pistol'
+    ? { matrix: gripMatrix(rig, [-0.06, -0.06, 0.2], [20, 10, 0]), poles: PISTOL_POLES }
+    : { matrix: gripMatrix(rig, [-0.12, -0.13, 0.22], [22, 42, -24]), poles: [[-0.5, -0.5, -0.3], [0.2, -0.7, 0.1]] };
+const aimOffset = (pitch) => ({ rig, kind }) => ({ matrix: aimMatrix(rig, pitch), poles: kind === 'pistol' ? PISTOL_POLES : LONG_POLES });
 
-  if (!armed) {
-    freeArms(rig, gait ? gait.armSwing * Math.sin(phase * Math.PI * 2) : 0, gait === RUN ? 70 : 15);
+/** Кривая отдачи: резкий толчок и плавный возврат. */
+function kick(t, duration) {
+  return t < 0.02 ? t / 0.02 : Math.max(0, 1 - (t - 0.02) / (duration - 0.02));
+}
+
+/** Падение: dir = −1 на спину, +1 лицом вниз. Ноги и руки — прямая кинематика. */
+function death(rig, t, dir) {
+  const back = dir < 0;
+  const times = back ? [0, 0.25, 0.75, 1.15, 1.4] : [0, 0.2, 0.65, 1.05, 1.3];
+  const k = (values, tt = t) => keys(tt, times.map((time, i) => [time, values[i]]));
+  rig.body({
+    hips: [0, k([-0.02, -0.06, -0.46, -0.83, -0.84]), k(back ? [0, -0.05, -0.2, -0.42, -0.44] : [0, 0.03, 0.18, 0.4, 0.42])],
+    hipsRot: [k(back ? [0, -4, -22, -86, -88] : [0, 6, 30, 84, 86]), k([0, 4, 8, 12, 12]), k([0, 2, 6, 10, 10])],
+    spine: [k(back ? [0, -12, -6, 4, 2] : [0, 10, 8, -4, -6]), 0, 0],
+    chest: [k(back ? [0, -10, -6, 4, 2] : [0, 8, 6, -6, -8]), 0, 0],
+  });
+  for (const [side, delay] of [['Left', 0], ['Right', 0.06]]) {
+    const tt = Math.max(0, t - delay);
+    const s = side === 'Left' ? 1 : -1;
+    rig.rotate(`${side}UpLeg`, back ? k([0, -10, -55, -25, -8], tt) : k([0, -20, -80, -12, 4], tt), 0, s * k([2, 4, 8, 10, 12], tt));
+    rig.rotate(`${side}Leg`, back ? k([0, 20, 95, 40, 12], tt) : k([0, 35, 110, 30, 8], tt), 0, 0);
+    rig.rotate(`${side}Foot`, back ? k([0, 10, -10, 20, 30], tt) : k([0, 20, 40, 60, 70], tt), 0, 0);
+    rig.freeArm(side, {
+      swing: back ? k([0, -10, -30, -60, -70], tt) : k([0, -30, -70, -90, -95], tt),
+      spread: back ? k([76, 60, 45, 25, 18], tt) : k([76, 70, 40, 30, 28], tt),
+      bend: k([15, 25, 30, 15, 10], tt),
+    });
   }
-  rig.groundFeet();
-  const cheekWeld = motion === 'aim' && kind === 'rifle';
-  rig.lookForward(gait ? 4 : cheekWeld ? 9 : 0, cheekWeld ? 10 : 0);
-  if (armed) {
-    const mode = motion === 'aim' ? 'aim' : motion === 'run' && kind === 'rifle' ? 'carry' : 'ready';
-    holdWeapon(rig, mode, kind, t);
+  rig.rotate('Neck', back ? k([0, -15, -10, 5, 8]) : k([0, 10, 5, -15, -20]), 0, 0, 'YXZ');
+  rig.rotate('Head', back ? k([0, -18, -6, 10, 14]) : k([0, 6, 0, -20, -30]), 0, k([0, 0, 10, 35, 40]), 'YXZ');
+}
+
+export const MOTIONS = {
+  idle: { label: 'Стойка', duration: 3, loop: true, body: ({ rig, t }) => standBody(rig, t), hold: readyHold },
+  aim: {
+    label: 'Прицеливание',
+    duration: 3,
+    loop: true,
+    body: ({ rig, t, kind }) => (kind === 'pistol' ? standBody(rig, t, { stagger: 0.08 }) : aimBody(rig, t)),
+    hold: aimHold,
+    look: ({ kind }) => (kind === 'pistol' ? [0, 0] : [9, 10]),
+  },
+  aim_up: {
+    label: 'Прицел вверх',
+    duration: 1,
+    loop: true,
+    body: ({ rig, t, kind }) => {
+      if (kind === 'pistol') standBody(rig, t);
+      else aimBody(rig, t);
+      rig.rotate('Spine', -6, -8, 0, 'YXZ');
+      rig.rotate('Chest', -14, -6, 0, 'YXZ');
+    },
+    hold: aimOffset(-55),
+    look: () => [-55, 6],
+  },
+  aim_down: {
+    label: 'Прицел вниз',
+    duration: 1,
+    loop: true,
+    body: ({ rig, t, kind }) => {
+      if (kind === 'pistol') standBody(rig, t);
+      else aimBody(rig, t);
+      rig.rotate('Spine', 18, -8, 0, 'YXZ');
+      rig.rotate('Chest', 16, -6, 0, 'YXZ');
+    },
+    hold: aimOffset(55),
+    look: () => [55, 8],
+  },
+  walk_forward: { label: 'Шаг вперёд с прицелом', ...gait('walk', [0, 1], aimHold) },
+  walk_backward: { label: 'Шаг назад', ...gait('walk', [0, -1], aimHold) },
+  walk_left: { label: 'Шаг влево', ...gait('walk', [1, 0], aimHold) },
+  walk_right: { label: 'Шаг вправо', ...gait('walk', [-1, 0], aimHold) },
+  jog_forward: { label: 'Бег вперёд', ...gait('jog', [0, 1], jogHold) },
+  jog_backward: { label: 'Бег назад', ...gait('jog', [0, -1], jogHold) },
+  jog_left: { label: 'Бег влево', ...gait('jog', [1, 0], jogHold) },
+  jog_right: { label: 'Бег вправо', ...gait('jog', [-1, 0], jogHold) },
+  sprint: { label: 'Спринт', ...gait('sprint', [0, 1], sprintHold) },
+  crouch_idle: { label: 'Присед', duration: 3, loop: true, body: ({ rig, t }) => crouchBody(rig, t), hold: aimHold, look: () => [2, 4] },
+  crouch_forward: { label: 'Гусиный шаг вперёд', ...gait('crouch', [0, 1], aimHold) },
+  crouch_backward: { label: 'Гусиный шаг назад', ...gait('crouch', [0, -1], aimHold) },
+  crouch_left: { label: 'Гусиный шаг влево', ...gait('crouch', [1, 0], aimHold) },
+  crouch_right: { label: 'Гусиный шаг вправо', ...gait('crouch', [-1, 0], aimHold) },
+  prone_idle: {
+    label: 'Лёжа',
+    duration: 3,
+    loop: true,
+    body: ({ rig, t }) => proneBody(rig, t),
+    hold: ({ rig, kind }) => ({ matrix: aimMatrix(rig), poles: kind === 'pistol' ? PISTOL_POLES : PRONE_POLES }),
+    free: ({ rig }) => ['Left', 'Right'].forEach((side) => rig.freeArm(side, { swing: -70, spread: 30, bend: 60 })),
+  },
+  prone_crawl: {
+    label: 'Ползком',
+    duration: 1.6,
+    loop: true,
+    body: ({ rig, t, phase }) => proneBody(rig, t, phase),
+    hold: ({ rig, phase, kind }) => ({ matrix: aimMatrix(rig, 8 + 3 * Math.sin(phase * TAU * 2)), poles: kind === 'pistol' ? PISTOL_POLES : PRONE_POLES }),
+    free: ({ rig, phase }) => {
+      rig.freeArm('Left', { swing: -70 + 20 * Math.sin(phase * TAU), spread: 30, bend: 60 });
+      rig.freeArm('Right', { swing: -70 - 20 * Math.sin(phase * TAU), spread: 30, bend: 60 });
+    },
+  },
+  jump_start: {
+    label: 'Прыжок: толчок',
+    duration: 0.3,
+    loop: false,
+    body: ({ rig, t }) => {
+      rig.body({ hips: [0, keys(t, [[0, -0.03], [0.12, -0.15], [0.3, 0.06]]), 0], spine: [keys(t, [[0, 4], [0.12, 16], [0.3, 6]]), 0, 0], chest: [4, 0, 0] });
+      const lift = keys(t, [[0, 0], [0.22, 0], [0.3, 0.07]]);
+      const pitch = keys(t, [[0, 0], [0.15, 0], [0.3, 40]]);
+      feet(rig, { x: 0.11, z: 0.04, lift, pitch, yaw: 8 }, { x: -0.11, z: -0.04, lift, pitch, yaw: -10 });
+    },
+    hold: readyHold,
+  },
+  jump_fall: {
+    label: 'Прыжок: полёт',
+    duration: 0.6,
+    loop: true,
+    body: ({ rig, phase }) => {
+      rig.body({ hips: [0, -0.02 + 0.01 * Math.sin(phase * TAU), 0], spine: [6, 0, 0], chest: [3, 0, 0] });
+      rig.placeFoot('Left', { x: 0.11, z: 0.14, lift: 0.3, pitch: 12, yaw: 8 });
+      rig.placeFoot('Right', { x: -0.11, z: -0.16, lift: 0.22, pitch: 35, yaw: -8 });
+    },
+    hold: readyHold,
+  },
+  jump_land: {
+    label: 'Прыжок: приземление',
+    duration: 0.35,
+    loop: false,
+    body: ({ rig, t }) => {
+      rig.body({
+        hips: [0, keys(t, [[0, -0.02], [0.08, -0.18], [0.35, -0.03]]), 0],
+        spine: [keys(t, [[0, 6], [0.08, 18], [0.35, 3]]), 0, 0],
+        chest: [keys(t, [[0, 3], [0.08, 8], [0.35, 1]]), 0, 0],
+      });
+      feet(rig, { x: 0.12, z: 0.06, yaw: 8 }, { x: -0.12, z: -0.06, yaw: -12 });
+    },
+    hold: readyHold,
+  },
+  fire: {
+    label: 'Выстрел',
+    duration: 0.1,
+    loop: true,
+    durationFor: (kind) => (kind === 'pistol' ? 0.25 : 0.1),
+    body: ({ rig, t, kind, duration }) => {
+      if (kind === 'pistol') standBody(rig, t, { stagger: 0.08 });
+      else aimBody(rig, t);
+      rig.rotate('Chest', 7 - 1.5 * kick(t, duration), -6, 0, 'YXZ');
+    },
+    hold: ({ rig, t, kind, duration }) => {
+      const k = kick(t, duration);
+      return kind === 'pistol'
+        ? { matrix: recoil(aimMatrix(rig), k, 0.025, 9), poles: PISTOL_POLES }
+        : { matrix: recoil(aimMatrix(rig), k, 0.03, 3), poles: LONG_POLES };
+    },
+    look: ({ kind }) => (kind === 'pistol' ? [0, 0] : [9, 10]),
+  },
+  reload: {
+    label: 'Перезарядка',
+    duration: RELOAD.long.duration,
+    loop: false,
+    durationFor: (kind) => RELOAD[kind === 'pistol' ? 'pistol' : 'long'].duration,
+    body: ({ rig, t }) => {
+      standBody(rig, t);
+      rig.rotate('Chest', 6, 0, 0, 'YXZ');
+    },
+    hold: ({ rig, t, kind, duration }) => {
+      const type = kind === 'pistol' ? 'pistol' : 'long';
+      const w = smooth(t / 0.22) * (1 - smooth((t - (duration - 0.25)) / 0.25));
+      const base = kind === 'pistol' ? gripMatrix(rig, [-0.03, -0.1, 0.32], [20, 6, 0]) : readyMatrix(rig, t, 20, 10);
+      const tilted = kind === 'pistol' ? gripMatrix(rig, [-0.02, -0.05, 0.28], [-8, 4, -22]) : gripMatrix(rig, [-0.1, -0.08, 0.3], [-10, 14, 26]);
+      return { matrix: blendMatrices(base, tilted, w), poles: kind === 'pistol' ? PISTOL_POLES : LONG_POLES, left: reloadHand(type, t) };
+    },
+    look: ({ t, duration }) => [keys(t, [[0, 0], [0.25, 22], [duration - 0.3, 22], [duration, 4]]), 0],
+  },
+  bandage: {
+    label: 'Перевязка',
+    duration: 3,
+    loop: false,
+    item: 'bandage',
+    body: ({ rig, t }) => {
+      standBody(rig, t);
+      rig.rotate('Chest', 8, 6, 0, 'YXZ');
+    },
+    hold: ({ rig, t, kind }) => {
+      const w = smooth(t / 0.35) * (1 - smooth((t - 2.6) / 0.4));
+      const ready = kind === 'pistol' ? gripMatrix(rig, [-0.03, -0.12, 0.34], [28, 6, 0]) : readyMatrix(rig, t);
+      const hang = kind === 'pistol' ? gripMatrix(rig, [-0.16, -0.3, 0.18], [55, 10, 0]) : gripMatrix(rig, [-0.18, -0.36, 0.2], [58, 20, 0]);
+      return { matrix: blendMatrices(ready, hang, w), poles: kind === 'pistol' ? PISTOL_POLES : LONG_POLES, wrap: true };
+    },
+    look: ({ t }) => [keys(t, [[0, 0], [0.4, 26], [2.6, 26], [3, 2]]), 0, keys(t, [[0, 0], [0.4, -22], [2.6, -22], [3, 0]])],
+  },
+  hit: {
+    label: 'Попадание',
+    duration: 0.35,
+    loop: false,
+    body: ({ rig, t, kind }) => {
+      if (kind === 'pistol') standBody(rig, t);
+      else aimBody(rig, t);
+      rig.bones.Hips.position.z += keys(t, [[0, 0], [0.06, -0.035], [0.35, 0]]);
+      rig.rotate('Chest', keys(t, [[0, 7], [0.06, -6], [0.35, 7]]), keys(t, [[0, -6], [0.06, 6], [0.35, -6]]), 0, 'YXZ');
+    },
+    hold: aimHold,
+    look: ({ t }) => [keys(t, [[0, 6], [0.06, -12], [0.35, 6]]), 0],
+  },
+  death_back: { label: 'Смерть (на спину)', duration: 1.4, loop: false, body: ({ rig, t }) => death(rig, t, -1), lifeless: true },
+  death_forward: { label: 'Смерть (лицом вниз)', duration: 1.3, loop: false, body: ({ rig, t }) => death(rig, t, 1), lifeless: true },
+};
+
+/* ------------------------------------------------------------------ */
+/* Поза в момент t                                                     */
+/* ------------------------------------------------------------------ */
+
+/** Какой хват у оружия в руке: 'long', 'pistol' или 'none'. */
+export function weaponKind(weapon) {
+  if (!weapon) return 'none';
+  return weapon.userData.hold === 'pistol' ? 'pistol' : 'long';
+}
+
+/** Длительность движения для данного оружия. */
+export function motionDuration(id, kind) {
+  const m = MOTIONS[id];
+  return m.durationFor ? m.durationFor(kind) : m.duration;
+}
+
+/** Перевязка: кулак левой руки ходит кругами вокруг правого предплечья. */
+function wrapFist(rig, t) {
+  const elbow = rig.bones.RightForeArm.getWorldPosition(new THREE.Vector3());
+  const wrist = rig.bones.RightHand.getWorldPosition(new THREE.Vector3());
+  const axis = wrist.clone().sub(elbow).normalize();
+  const progress = clamp01((t - 0.45) / 2.0);
+  const center = elbow.clone().lerp(wrist, 0.35 + 0.35 * progress);
+  const e1 = new THREE.Vector3(0, 1, 0).cross(axis).normalize();
+  const e2 = axis.clone().cross(e1);
+  const angle = progress * 3 * TAU;
+  const offset = e1.multiplyScalar(Math.cos(angle) * 0.085).addScaledVector(e2, Math.sin(angle) * 0.085);
+  const palm = offset.clone().negate().normalize(); // ладонь к предплечью
+  const thumb = axis.clone().addScaledVector(palm, -axis.dot(palm)).normalize();
+  return new THREE.Matrix4().makeBasis(palm.clone().cross(thumb), palm, thumb).setPosition(center.add(offset));
+}
+
+/**
+ * Поставить позу: движение id в момент t (секунды). kind — хват оружия;
+ * по умолчанию определяется по оружию в руке.
+ */
+export function pose(rig, id, t, kind = weaponKind(rig.weapon)) {
+  const motion = MOTIONS[id];
+  const duration = motionDuration(id, kind);
+  const time = motion.loop ? ((t % duration) + duration) % duration : Math.min(t, duration);
+  const ctx = { rig, t: time, phase: time / duration, kind, duration };
+  rig.reset();
+  motion.body(ctx);
+  rig.root.updateMatrixWorld(true);
+  if (motion.lifeless) return;
+
+  const [pitch, roll, yaw = 0] = motion.look ? motion.look(ctx) : [0, 0];
+  rig.lookForward(pitch, roll, yaw);
+
+  if (kind === 'none' || !rig.weapon) {
+    if (motion.free) motion.free(ctx);
+    else ['Left', 'Right'].forEach((side) => rig.freeArm(side));
+    rig.root.updateMatrixWorld(true);
+    return;
+  }
+  const hold = motion.hold(ctx);
+  const [poleR, poleL] = poles(rig, ...hold.poles);
+  if (hold.wrap) {
+    rig.holdAt(hold.matrix, poleR, poleL, 'free');
+    rig.root.updateMatrixWorld(true);
+    const grip = rig.weapon.getObjectByName('grip_l').matrixWorld.clone();
+    const reach = rig.chestFrame([0.04, -0.12, 0.26], [-70, 30, 0]);
+    const fist = time < 0.45
+      ? blendMatrices(grip, reach, smooth(time / 0.45))
+      : time < 2.45
+        ? blendMatrices(reach, wrapFist(rig, time), smooth((time - 0.45) / 0.2))
+        : blendMatrices(wrapFist(rig, time), grip, smooth((time - 2.45) / 0.5));
+    rig.leftHandAt(fist, poleL);
+  } else {
+    rig.holdAt(hold.matrix, poleR, poleL, hold.left);
   }
   rig.root.updateMatrixWorld(true);
 }
 
-/** Какой «класс» хвата у оружия. */
-export function weaponKind(weapon) {
-  if (!weapon) return 'none';
-  return weapon.userData.id === 'pistol' ? 'pistol' : 'rifle';
+/** Магазин оружия во время перезарядки (для просмотрщика). */
+export function updateWeaponParts(rig, id, t) {
+  const magazine = rig.weapon?.getObjectByName('magazine');
+  if (!magazine) return;
+  magazine.userData.rest ??= localMatrix(magazine);
+  const type = weaponKind(rig.weapon) === 'pistol' ? 'pistol' : 'long';
+  const m = id === 'reload' ? reloadMagazine(type, Math.min(t, RELOAD[type].duration), magazine.userData.rest) : magazine.userData.rest;
+  m.decompose(magazine.position, magazine.quaternion, magazine.scale);
 }
 
-/** Запечь анимации в ключевые кадры (30 к/с) для экспорта в .glb. */
-export function bakeClips(root) {
+/* ------------------------------------------------------------------ */
+/* Запекание клипов для .glb                                           */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Клипы в файле бойца: [имя, движение, хват]. Клипы Rifle_* подходят к любому
+ * длинноствольному оружию: у всех одинаковая геометрия хвата (handling.js).
+ */
+export const CLIPS = [
+  ['Idle', 'idle', 'none'],
+  ['Rifle_Idle', 'idle', 'long'],
+  ['Rifle_Aim', 'aim', 'long'],
+  ['Rifle_Aim_Up', 'aim_up', 'long'],
+  ['Rifle_Aim_Down', 'aim_down', 'long'],
+  ['Rifle_Walk_Forward', 'walk_forward', 'long'],
+  ['Rifle_Walk_Backward', 'walk_backward', 'long'],
+  ['Rifle_Walk_Left', 'walk_left', 'long'],
+  ['Rifle_Walk_Right', 'walk_right', 'long'],
+  ['Rifle_Jog_Forward', 'jog_forward', 'long'],
+  ['Rifle_Jog_Backward', 'jog_backward', 'long'],
+  ['Rifle_Jog_Left', 'jog_left', 'long'],
+  ['Rifle_Jog_Right', 'jog_right', 'long'],
+  ['Rifle_Sprint', 'sprint', 'long'],
+  ['Rifle_Crouch_Idle', 'crouch_idle', 'long'],
+  ['Rifle_Crouch_Walk_Forward', 'crouch_forward', 'long'],
+  ['Rifle_Crouch_Walk_Backward', 'crouch_backward', 'long'],
+  ['Rifle_Crouch_Walk_Left', 'crouch_left', 'long'],
+  ['Rifle_Crouch_Walk_Right', 'crouch_right', 'long'],
+  ['Rifle_Prone_Idle', 'prone_idle', 'long'],
+  ['Rifle_Prone_Crawl', 'prone_crawl', 'long'],
+  ['Rifle_Jump_Start', 'jump_start', 'long'],
+  ['Rifle_Jump_Fall', 'jump_fall', 'long'],
+  ['Rifle_Jump_Land', 'jump_land', 'long'],
+  ['Rifle_Fire', 'fire', 'long'],
+  ['Rifle_Reload', 'reload', 'long'],
+  ['Bandage', 'bandage', 'long'],
+  ['Hit', 'hit', 'long'],
+  ['Death_Back', 'death_back', 'long'],
+  ['Death_Forward', 'death_forward', 'long'],
+  ['Pistol_Idle', 'idle', 'pistol'],
+  ['Pistol_Aim', 'aim', 'pistol'],
+  ['Pistol_Walk_Forward', 'walk_forward', 'pistol'],
+  ['Pistol_Jog_Forward', 'jog_forward', 'pistol'],
+  ['Pistol_Crouch_Idle', 'crouch_idle', 'pistol'],
+  ['Pistol_Fire', 'fire', 'pistol'],
+  ['Pistol_Reload', 'reload', 'pistol'],
+];
+
+/** Какие клипы зациклены — пригодится движку (в glTF такого флага нет). */
+export const LOOPING_CLIPS = CLIPS.filter(([, motion]) => MOTIONS[motion].loop).map(([name]) => name);
+
+/** Запечь клипы в ключевые кадры (30 к/с). Опорное оружие — автомат и пистолет. */
+export function bakeClips(root, fps = 30) {
   const rig = new Rig(root);
-  const fps = 30;
-  const plan = [
-    ['Idle', 'idle', null],
-    ['Walk', 'walk', null],
-    ['Run', 'run', null],
-    ['Rifle_Idle', 'idle', createAssaultRifle],
-    ['Rifle_Aim', 'aim', createAssaultRifle],
-    ['Rifle_Walk', 'walk', createAssaultRifle],
-    ['Rifle_Run', 'run', createAssaultRifle],
-    ['Pistol_Idle', 'idle', createPistol],
-    ['Pistol_Aim', 'aim', createPistol],
-    ['Pistol_Walk', 'walk', createPistol],
-  ];
+  const weapons = { long: createAssaultRifle(), pistol: createPistol() };
   const names = Object.keys(rig.bones);
-  const weapons = new Map(); // одно оружие на все клипы с ним
-  const clips = plan.map(([clipName, motion, createWeapon]) => {
-    if (createWeapon && !weapons.has(createWeapon)) weapons.set(createWeapon, createWeapon());
-    rig.attach(createWeapon ? weapons.get(createWeapon) : null);
-    const kind = weaponKind(rig.weapon);
-    const { duration } = MOTIONS[motion];
-    const frames = Math.round(duration * fps);
+  const clips = CLIPS.map(([clipName, motion, kind]) => {
+    rig.attach(weapons[kind] ?? null);
+    const duration = motionDuration(motion, kind);
+    const frames = Math.max(2, Math.round(duration * fps));
     const times = new Float32Array(frames + 1);
     const quats = Object.fromEntries(names.map((n) => [n, new Float32Array((frames + 1) * 4)]));
     const hips = new Float32Array((frames + 1) * 3);
     for (let f = 0; f <= frames; f++) {
       const t = (f / frames) * duration;
       times[f] = t;
-      pose(rig, motion, kind, t);
+      // последний кадр зацикленного клипа совпадает с первым
+      pose(rig, motion, MOTIONS[motion].loop && f === frames ? 0 : t, kind);
       for (const n of names) rig.bones[n].quaternion.toArray(quats[n], f * 4);
       rig.bones.Hips.position.toArray(hips, f * 3);
     }
@@ -363,13 +637,18 @@ export function bakeClips(root) {
   return clips;
 }
 
+/* ------------------------------------------------------------------ */
+/* Управление в просмотрщике                                           */
+/* ------------------------------------------------------------------ */
+
 /**
- * Управление позой бойца в просмотрщике: выбор оружия и движения,
- * поза пересчитывается каждый кадр (IK подстраивается под любое оружие).
+ * Выбор оружия и движения; поза пересчитывается каждый кадр, поэтому
+ * руки подстраиваются под любое оружие, а при перезарядке двигается магазин.
  */
 export function createSoldierController(root, weapons) {
   const rig = new Rig(root);
-  const state = { motion: 'idle', time: 0, weaponId: 'none' };
+  const state = { motion: 'idle', time: 0 };
+  let bandage = null;
   return {
     rig,
     get time() {
@@ -379,19 +658,38 @@ export function createSoldierController(root, weapons) {
       state.time = value;
     },
     setWeapon(id) {
-      state.weaponId = id;
       rig.attach(id === 'none' ? null : weapons[id]());
       this.update(0);
     },
     setMotion(motion) {
       state.motion = motion;
+      state.time = 0;
       this.update(0);
     },
     update(dt) {
       state.time += dt;
-      if (rig.weapon) rig.weapon.visible = state.motion !== 'tpose';
-      if (state.motion === 'tpose') rig.reset();
-      else pose(rig, state.motion, weaponKind(rig.weapon), state.time);
+      const tpose = state.motion === 'tpose';
+      if (rig.weapon) rig.weapon.visible = !tpose;
+      const wantsBandage = !tpose && MOTIONS[state.motion]?.item === 'bandage';
+      if (wantsBandage && !bandage) {
+        bandage = createBandage();
+        bandage.getObjectByName('tail').visible = false;
+        rig.attachLeft(bandage);
+      } else if (!wantsBandage && bandage) {
+        rig.attachLeft(null);
+        bandage = null;
+      }
+      if (tpose) {
+        rig.reset();
+        return;
+      }
+      const kind = weaponKind(rig.weapon);
+      const motion = MOTIONS[state.motion];
+      const duration = motionDuration(state.motion, kind);
+      // одноразовые движения повторяем с паузой, чтобы их было видно
+      const t = motion.loop ? state.time : state.time % (duration + 0.8);
+      pose(rig, state.motion, t, kind);
+      updateWeaponParts(rig, state.motion, t);
     },
   };
 }

@@ -41,11 +41,14 @@ export function createBandage() {
   }
   const ground = [[0.012, 0], [0.03, 0], [0.05, 0.0004], [0.068, 0.0035], [0.084, 0.0062], [0.1, 0.0045], [0.116, 0.001], [0.135, 0], [0.155, 0], [0.17, 0.0002]];
   for (const [z, lift] of ground) tail.push([0, T / 2 + lift, z]);
-  p.add(ribbon(tail, W - 0.004, T), 'gauze', { crease: 50 });
+  // хвост — отдельный узел: когда бинт в руке, его можно скрыть
+  const tailParts = new Parts();
+  tailParts.add(ribbon(tail, W - 0.004, T), 'gauze', { crease: 50 });
 
   const root = new THREE.Group();
   root.name = 'bandage';
   root.add(p.build('bandage_body'));
+  root.add(tailParts.build('tail'));
   root.add(anchor('grip_r', [0, cy, 0]));
   root.userData = { kind: 'item', id: 'bandage', heal: 25 };
   return root;

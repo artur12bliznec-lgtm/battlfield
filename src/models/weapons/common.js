@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { anchor } from '../kit.js';
+import { LONG_GUN, PISTOL, weaponClips } from './handling.js';
 
 /**
  * Собирает оружие из деталей и расставляет точки крепления.
@@ -18,16 +19,18 @@ import { anchor } from '../kit.js';
  *
  * @param {object} spec
  * @param {string} spec.id          — идентификатор (имя корневого узла)
+ * @param {'long'|'pistol'} spec.hold — тип хвата: угол рукояти и grip_l берутся из handling.js
  * @param {Parts}  spec.body        — неподвижные детали
  * @param {object} [spec.movable]   — подвижные детали: { имя: { parts, pivot } },
  *                                    pivot — точка вращения/крепления детали
  * @param {number[]} spec.grip      — точка хвата правой рукой [x, y, z]
- * @param {number} spec.gripAngle   — наклон рукояти от вертикали (радианы)
  * @param {object} spec.points      — остальные точки: { имя: [x, y, z, rx?, ry?, rz?] }
  * @param {object} [spec.info]      — характеристики (попадают в userData / extras glTF)
+ * @param {boolean} [spec.bipodFoldsForward] — сошки сложены вперёд (иначе назад)
  */
-export function assembleWeapon({ id, body, movable = {}, grip, gripAngle, points, info = {} }) {
+export function assembleWeapon({ id, hold, body, movable = {}, grip, points, info = {}, bipodFoldsForward = true }) {
   const [gx, gy, gz] = grip;
+  const standard = hold === 'pistol' ? PISTOL : LONG_GUN;
   const root = new THREE.Group();
   root.name = id;
 
@@ -41,11 +44,13 @@ export function assembleWeapon({ id, body, movable = {}, grip, gripAngle, points
     root.add(mesh);
   }
 
-  root.add(anchor('grip_r', [0, 0, 0], [gripAngle, 0, 0]));
+  root.add(anchor('grip_r', [0, 0, 0], [standard.gripAngle, 0, 0]));
+  root.add(anchor('grip_l', standard.support));
   for (const [name, [x, y, z, rx = 0, ry = 0, rz = 0]] of Object.entries(points)) {
     root.add(anchor(name, [x - gx, y - gy, z - gz], [rx, ry, rz]));
   }
 
-  root.userData = { kind: 'weapon', id, ...info };
+  root.userData = { kind: 'weapon', id, hold, ...info };
+  root.animations = weaponClips(root, { hold, foldedForward: bipodFoldsForward });
   return root;
 }

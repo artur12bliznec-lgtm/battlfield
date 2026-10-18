@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { patternTexture } from './textures.js';
 
 /**
  * Палитра материалов.
@@ -17,6 +18,8 @@ export const PALETTE = {
   wood: { color: '#7c4423', metalness: 0.0, roughness: 0.5 }, // лакированное дерево (АК)
   bakelite: { color: '#6b2f1c', metalness: 0.0, roughness: 0.45 }, // рыжий магазин АК
   greenPolymer: { color: '#4f5a36', metalness: 0.0, roughness: 0.7 }, // зелёная ложа снайперки
+  anodized: { color: '#26282b', metalness: 0.35, roughness: 0.5 }, // анодированный алюминий (M4)
+  tanPolymer: { color: '#9a8261', metalness: 0.0, roughness: 0.7 }, // пластик цвета «койот» (M4)
   olivePaint: { color: '#4a5135', metalness: 0.25, roughness: 0.6 }, // крашеный металл (короб пулемёта)
   brass: { color: '#c9a043', metalness: 0.9, roughness: 0.28 }, // гильзы
   copper: { color: '#b46a3c', metalness: 0.9, roughness: 0.3 }, // пули
@@ -39,14 +42,22 @@ export const PALETTE = {
 
 const cache = new Map();
 
+/**
+ * spec: { color, metalness, roughness, emissive, texture }.
+ * texture — имя узора из textures.js (камуфляж); color тогда служит оттенком.
+ */
 function createMaterial(name, spec) {
   const material = new THREE.MeshStandardMaterial({
     name,
-    color: new THREE.Color(spec.color),
+    color: new THREE.Color(spec.color ?? '#ffffff'),
     metalness: spec.metalness ?? 0,
     roughness: spec.roughness ?? 0.8,
   });
   if (spec.emissive) material.emissive = new THREE.Color(spec.emissive);
+  if (spec.texture) {
+    material.map = patternTexture(spec.texture);
+    material.userData.tile = material.map.userData.tile; // метров на один повтор узора
+  }
   return material;
 }
 

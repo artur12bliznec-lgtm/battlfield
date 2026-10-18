@@ -201,7 +201,7 @@ function renderSpecs() {
     rows.push(['Режимы', info.modes], ['Длина', `${number(size.z)} м`]);
   } else if (entry.kind === 'soldier') {
     rows.push(['Фракция', info.factionName], ['Рост', `${number(size.y)} м`], ['Кости', info.bones]);
-    rows.push(['Анимации', (model.animations ?? []).length]);
+    rows.push(['Анимации', entry.clips ?? 0]);
   } else if (entry.kind === 'scene') {
     rows.push(['Моделей', info.models], ['Сторон', 2], ['Оружия', 4]);
   } else {
@@ -302,7 +302,7 @@ function show(id) {
   disposeModel();
   state.entry = entry;
   state.values = {};
-  state.model = entry.create();
+  state.model = entry.create(true); // для просмотра анимации не запекаются — позы считаются на лету
   holder.add(state.model);
   state.model.traverse((obj) => {
     if (obj.isMesh) obj.castShadow = obj.receiveShadow = true;

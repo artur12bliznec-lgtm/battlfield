@@ -19,9 +19,10 @@ export function createAssaultRifle() {
   p.add(box(0.012, 0.01, 0.014, 0.003).translate(0, 0.016, 0.002), 'steel');
   // окно выброса гильз и затворная рама (правая сторона, −X)
   p.add(box(0.002, 0.015, 0.075).translate(-0.0168, 0.004, 0.135), 'darkSteel');
-  // рукоятка затворной рамы
-  p.add(rod([-0.016, 0.01, 0.172], [-0.036, 0.012, 0.172], 0.0042), 'steel');
-  p.add(sphere(0.0068, 8, 6).scale(1, 0.9, 1.2).translate(-0.039, 0.012, 0.172), 'steel');
+  // рукоятка затворной рамы — отдельный узел bolt, ходит при выстреле
+  const bolt = new Parts();
+  bolt.add(rod([-0.016, 0.01, 0.172], [-0.036, 0.012, 0.172], 0.0042), 'steel');
+  bolt.add(sphere(0.0068, 8, 6).scale(1, 0.9, 1.2).translate(-0.039, 0.012, 0.172), 'steel');
   // переводчик огня — длинный рычаг справа
   p.add(box(0.003, 0.012, 0.115, 0.001).rotateX(-3 * DEG).translate(-0.0185, -0.002, 0.108), 'steel');
   p.add(box(0.004, 0.02, 0.01, 0.001).translate(-0.019, -0.006, 0.168), 'steel');
@@ -85,12 +86,14 @@ export function createAssaultRifle() {
 
   return assembleWeapon({
     id: 'assault_rifle',
+    hold: 'long',
     body: p,
-    movable: { magazine: { parts: mag, pivot: [0, -0.036, 0.152] } },
+    movable: {
+      magazine: { parts: mag, pivot: [0, -0.036, 0.152] },
+      bolt: { parts: bolt, pivot: [-0.016, 0.01, 0.172] },
+    },
     grip: [0, -0.095, 0.028],
-    gripAngle: 17 * DEG,
     points: {
-      grip_l: [0, -0.017, 0.35],
       sight: [0, 0.037, -0.06],
       muzzle: [0, 0, 0.682],
       stock: [0, -0.106, -0.27],

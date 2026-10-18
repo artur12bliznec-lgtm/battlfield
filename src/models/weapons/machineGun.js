@@ -95,12 +95,12 @@ export function createMachineGun() {
 
   return assembleWeapon({
     id: 'machine_gun',
+    hold: 'long',
+    bipodFoldsForward: false,
     body: p,
     movable: { magazine: { parts: box100, pivot: [-0.012, -0.068, 0.212] }, ...legs },
     grip: [0, -0.11, 0.025],
-    gripAngle: 14 * DEG,
     points: {
-      grip_l: [0, -0.036, 0.45],
       sight: [0, 0.055, -0.05],
       muzzle: [0, 0, 0.871],
       stock: [0, -0.093, -0.402],

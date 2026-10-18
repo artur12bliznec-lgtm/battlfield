@@ -1,4 +1,4 @@
-import { Parts, profile, rounded, box, cylinder, DEG } from '../kit.js';
+import { Parts, profile, rounded, box, cylinder } from '../kit.js';
 import { assembleWeapon } from './common.js';
 
 /**
@@ -11,24 +11,24 @@ import { assembleWeapon } from './common.js';
 export function createPistol() {
   const p = new Parts();
 
-  // --- Затвор-кожух ---
-  p.add(profile(rounded([[0.0, -0.015, 0.002], [0.186, -0.015, 0.002], [0.186, 0.006, 0.004], [0.178, 0.0145, 0.003], [0.003, 0.0145, 0.003], [0.0, 0.01, 0.002]]), 0.0255, { bevel: 0.003 }), 'gunmetal');
+  // --- Затвор-кожух с прицельными приспособлениями — отдельный узел slide ---
+  const slide = new Parts();
+  slide.add(profile(rounded([[0.0, -0.015, 0.002], [0.186, -0.015, 0.002], [0.186, 0.006, 0.004], [0.178, 0.0145, 0.003], [0.003, 0.0145, 0.003], [0.0, 0.01, 0.002]]), 0.0255, { bevel: 0.003 }), 'gunmetal');
   for (const side of [-1, 1]) {
-    for (let i = 0; i < 7; i++) p.add(box(0.0012, 0.02, 0.0022).translate(side * 0.0128, -0.002, 0.008 + i * 0.0045), 'darkSteel');
+    for (let i = 0; i < 7; i++) slide.add(box(0.0012, 0.02, 0.0022).translate(side * 0.0128, -0.002, 0.008 + i * 0.0045), 'darkSteel');
   }
+  slide.add(box(0.0022, 0.009, 0.05).translate(-0.0118, 0.0085, 0.098), 'steel'); // окно выброса: виден казённик ствола
+  slide.add(box(0.0035, 0.0055, 0.006, 0.0008).translate(0, 0.017, 0.177), 'polymer');
+  slide.add(box(0.0016, 0.0016, 0.0008).translate(0, 0.0182, 0.1737), 'sightDot');
+  slide.add(box(0.015, 0.002, 0.007).translate(0, 0.0152, 0.012), 'polymer');
+  for (const side of [-1, 1]) {
+    slide.add(box(0.0055, 0.006, 0.007, 0.0008).translate(side * 0.0045, 0.0172, 0.012), 'polymer');
+    slide.add(box(0.0016, 0.0016, 0.0008).translate(side * 0.0045, 0.0185, 0.0083), 'sightDot');
+  }
+  // ствол остаётся на месте, когда кожух откатывается
   p.add(box(0.017, 0.003, 0.05).translate(0, 0.0135, 0.098), 'steel'); // казённик ствола в окне
-  p.add(box(0.0022, 0.009, 0.05).translate(-0.0118, 0.0085, 0.098), 'steel'); // окно выброса: виден казённик ствола
   p.add(cylinder(0.0066, 0.0066, 0.002, 12, 'z').translate(0, 0, 0.1865), 'steel');
   p.add(cylinder(0.0045, 0.0045, 0.002, 10, 'z').translate(0, 0, 0.1875), 'darkSteel');
-
-  // --- Прицельные приспособления ---
-  p.add(box(0.0035, 0.0055, 0.006, 0.0008).translate(0, 0.017, 0.177), 'polymer');
-  p.add(box(0.0016, 0.0016, 0.0008).translate(0, 0.0182, 0.1737), 'sightDot');
-  p.add(box(0.015, 0.002, 0.007).translate(0, 0.0152, 0.012), 'polymer');
-  for (const side of [-1, 1]) {
-    p.add(box(0.0055, 0.006, 0.007, 0.0008).translate(side * 0.0045, 0.0172, 0.012), 'polymer');
-    p.add(box(0.0016, 0.0016, 0.0008).translate(side * 0.0045, 0.0185, 0.0083), 'sightDot');
-  }
 
   // --- Рамка с рукоятью и спусковой скобой ---
   p.add(profile(rounded([
@@ -55,12 +55,14 @@ export function createPistol() {
 
   return assembleWeapon({
     id: 'pistol',
+    hold: 'pistol',
     body: p,
-    movable: { magazine: { parts: mag, pivot: [0, -0.035, 0.002] } },
+    movable: {
+      magazine: { parts: mag, pivot: [0, -0.035, 0.002] },
+      slide: { parts: slide, pivot: [0, 0, 0] },
+    },
     grip: [0, -0.085, 0.0095],
-    gripAngle: 22 * DEG,
     points: {
-      grip_l: [0.028, -0.095, 0.012],
       sight: [0, 0.019, -0.42],
       muzzle: [0, 0, 0.188],
       eject: [-0.013, 0.01, 0.098],

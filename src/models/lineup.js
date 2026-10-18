@@ -1,8 +1,10 @@
 import * as THREE from 'three';
 import { createSoldier } from './soldier/soldier.js';
-import { Rig, pose, weaponKind } from './soldier/animation.js';
+import { Rig } from './soldier/rig.js';
+import { pose } from './soldier/animation.js';
 import { createAssaultRifle } from './weapons/assaultRifle.js';
 import { createRifle } from './weapons/rifle.js';
+import { createSniperRifle } from './weapons/sniperRifle.js';
 import { createMachineGun } from './weapons/machineGun.js';
 import { createPistol } from './weapons/pistol.js';
 import { createBandage } from './items/bandage.js';
@@ -32,10 +34,11 @@ export function createLineup() {
 
   // стойка с оружием: стволом вправо, видна правая сторона
   const rack = [
-    [createRifle, 1.5],
-    [createMachineGun, 1.13],
-    [createAssaultRifle, 0.78],
-    [createPistol, 0.5],
+    [createSniperRifle, 1.62],
+    [createMachineGun, 1.3],
+    [createRifle, 1.0],
+    [createAssaultRifle, 0.72],
+    [createPistol, 0.46],
   ];
   for (const [create, y] of rack) {
     const weapon = create();
@@ -51,10 +54,10 @@ export function createLineup() {
   bandage.rotation.y = -0.6;
   scene.add(bandage);
 
-  scene.userData = { kind: 'scene', models: 7 };
+  scene.userData = { kind: 'scene', models: 8 };
   scene.updateMatrixWorld(true);
   const update = (time) => {
-    for (const s of soldiers) pose(s.rig, s.motion, weaponKind(s.rig.weapon), s.t + time);
+    for (const s of soldiers) pose(s.rig, s.motion, s.t + time);
   };
   update(0);
   animators.set(scene, update);
