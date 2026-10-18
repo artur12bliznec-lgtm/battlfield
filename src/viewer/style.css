@@ -1,0 +1,412 @@
+/* Компоновка: экран арсенала — приборная панель слева, 3D-стенд справа.
+   Одна тёмная тема (как в игре), все цвета — токены. */
+:root {
+  color-scheme: dark;
+  --bg: #141713;
+  --panel: #1b1f19;
+  --raised: #242a21;
+  --line: #343b2e;
+  --fg: #e8e5d7;
+  --muted: #9a9d8b;
+  --accent: #d5a34c;
+  --accent-ink: #1b1608;
+  --alliance: #5b8fe3;
+  --coalition: #dc5c44;
+  --font-display: 'Russo One', 'Arial Black', Impact, sans-serif;
+  --font-body: 'Fira Sans Condensed', 'Arial Narrow', 'Roboto Condensed', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  --radius: 6px;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 15px/1.45 var(--font-body);
+}
+
+#app {
+  display: grid;
+  grid-template-columns: minmax(250px, 300px) minmax(0, 1fr);
+  gap: 16px;
+  height: 100%;
+  box-sizing: border-box;
+  padding-block: 16px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+
+/* ---------- Панель ---------- */
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.brand-kicker {
+  margin: 0;
+  color: var(--muted);
+  font: 500 12px/1 var(--font-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.brand-title {
+  margin: 6px 0 0;
+  font: 400 40px/1 var(--font-display);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--accent);
+  text-wrap: balance;
+}
+
+.model-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.group-label {
+  margin: 0 0 6px;
+  color: var(--muted);
+  font: 500 11px/1 var(--font-mono);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.group-items {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.model-button {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr);
+  align-items: center;
+  column-gap: 10px;
+  width: 100%;
+  padding: 9px 12px;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.model-button:hover {
+  background: var(--raised);
+}
+
+.model-button[aria-pressed='true'] {
+  border-color: var(--line);
+  background: var(--raised);
+}
+
+.model-button:focus-visible,
+.segmented button:focus-visible,
+.download:focus-visible,
+.options select:focus-visible,
+.check input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  background: var(--line);
+}
+
+.model-button[aria-pressed='true'] .swatch {
+  background: var(--accent);
+}
+
+.swatch.alliance {
+  background: var(--alliance);
+}
+
+.swatch.coalition {
+  background: var(--coalition);
+}
+
+.model-name {
+  font-weight: 600;
+  font-size: 16px;
+}
+
+.model-note {
+  grid-column: 2;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.options {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.options:empty {
+  display: none;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.field-label {
+  color: var(--muted);
+  font: 500 11px/1 var(--font-mono);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.options select {
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--raised);
+  color: var(--fg);
+  font: inherit;
+}
+
+.hint {
+  margin: auto 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+/* ---------- Сцена ---------- */
+
+.stage {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+}
+
+.stage canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+}
+
+.card {
+  position: absolute;
+  margin: 0;
+  pointer-events: none;
+}
+
+.card-title {
+  top: 18px;
+  left: 20px;
+  right: 20px;
+}
+
+.subtitle {
+  margin: 0;
+  color: var(--muted);
+  font: 500 12px/1.2 var(--font-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.title {
+  margin: 6px 0 0;
+  font: 400 30px/1.05 var(--font-display);
+  text-transform: uppercase;
+  text-wrap: balance;
+}
+
+.specs {
+  left: 20px;
+  bottom: 18px;
+  display: grid;
+  grid-template-columns: auto auto;
+  column-gap: 16px;
+  row-gap: 3px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--bg) 82%, transparent);
+  font: 13px/1.4 var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.specs dt {
+  color: var(--muted);
+}
+
+.specs dd {
+  margin: 0;
+}
+
+.toolbar {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px 14px;
+  max-width: calc(100% - 32px);
+}
+
+.segmented {
+  display: flex;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.segmented button {
+  padding: 7px 11px;
+  border: 0;
+  border-right: 1px solid var(--line);
+  background: transparent;
+  color: var(--muted);
+  font: 500 13px/1 var(--font-body);
+  cursor: pointer;
+}
+
+.segmented button:last-child {
+  border-right: 0;
+}
+
+.segmented button[aria-pressed='true'] {
+  background: var(--raised);
+  color: var(--fg);
+}
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--fg);
+  font-size: 14px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.check input {
+  accent-color: var(--accent);
+}
+
+.download {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+  padding: 10px 16px;
+  border: 0;
+  border-radius: var(--radius);
+  background: var(--accent);
+  color: var(--accent-ink);
+  font: 600 15px/1 var(--font-body);
+  cursor: pointer;
+}
+
+.download:hover {
+  filter: brightness(1.08);
+}
+
+.download[hidden] {
+  display: none;
+}
+
+.point-label {
+  padding: 2px 6px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--bg) 85%, transparent);
+  color: var(--accent);
+  font: 500 11px/1.2 var(--font-mono);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* Режим «только картинка» (?ui=0) — для скриншотов */
+.bare .panel,
+.bare .card,
+.bare .toolbar,
+.bare .download {
+  display: none;
+}
+
+.bare #app {
+  grid-template-columns: minmax(0, 1fr);
+  padding: 0;
+}
+
+.bare .stage {
+  border: 0;
+  border-radius: 0;
+}
+
+/* ---------- Телефон ---------- */
+
+@media (max-width: 760px) {
+  html,
+  body {
+    height: auto;
+  }
+
+  #app {
+    grid-template-columns: minmax(0, 1fr);
+    height: auto;
+  }
+
+  .stage {
+    order: -1;
+    height: min(64svh, 560px);
+  }
+
+  .brand-title {
+    font-size: 32px;
+  }
+
+  .title {
+    font-size: 22px;
+  }
+
+  .toolbar {
+    top: auto;
+    bottom: 64px;
+    right: 12px;
+    gap: 6px 10px;
+  }
+
+  .specs {
+    display: none;
+  }
+
+  .hint {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+  }
+}
