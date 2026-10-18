@@ -152,12 +152,17 @@ body {
   font-size: 13px;
 }
 
+/* настройки выбранной модели прилипают к низу панели и всегда видны */
 .options {
+  position: sticky;
+  bottom: 0;
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding-top: 16px;
+  margin-top: auto;
+  padding-block: 14px 2px;
   border-top: 1px solid var(--line);
+  background: var(--bg);
 }
 
 .options:empty {
@@ -187,7 +192,7 @@ body {
 }
 
 .hint {
-  margin: auto 0 0;
+  margin: 8px 0 0;
   color: var(--muted);
   font-size: 13px;
 }
@@ -220,7 +225,7 @@ body {
 .card-title {
   top: 18px;
   left: 20px;
-  right: 20px;
+  max-width: min(46%, 520px);
 }
 
 .subtitle {
@@ -270,7 +275,7 @@ body {
   justify-content: flex-end;
   align-items: center;
   gap: 8px 14px;
-  max-width: calc(100% - 32px);
+  max-width: min(52%, 640px);
 }
 
 .segmented {
@@ -389,11 +394,16 @@ body {
     font-size: 22px;
   }
 
+  .card-title {
+    max-width: calc(100% - 40px);
+  }
+
   .toolbar {
     top: auto;
     bottom: 64px;
     right: 12px;
     gap: 6px 10px;
+    max-width: calc(100% - 24px);
   }
 
   .specs {
@@ -403,6 +413,14 @@ body {
   .hint {
     display: none;
   }
+}
+
+/* режим скриншотов занимает весь экран при любой ширине */
+html:has(.bare),
+.bare,
+.bare #app,
+.bare .stage {
+  height: 100%;
 }
 
 @media (prefers-reduced-motion: reduce) {

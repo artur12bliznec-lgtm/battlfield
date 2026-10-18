@@ -157,14 +157,6 @@ export function beam(a, b, w, t, side = [1, 0, 0]) {
   return geometry;
 }
 
-/** Вид сверху: контур в координатах (x, z), выдавленный вверх по Y на thickness (центр по Y). */
-export function plate(path, thickness, options) {
-  const { geometry, depth } = extrude(path, thickness, options);
-  geometry.rotateX(Math.PI / 2); // (u, v, w) → (u, −w, v)
-  geometry.translate(0, depth / 2, 0);
-  return geometry;
-}
-
 /* ------------------------------------------------------------------ */
 /* Лофт: поверхность через последовательность сечений                  */
 /* ------------------------------------------------------------------ */

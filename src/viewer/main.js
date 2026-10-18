@@ -83,6 +83,7 @@ const state = {
 };
 
 const VIEWS = {
+  hero: [-0.28, 0.2, 1],
   iso: [-1, 0.42, 0.62],
   side: [-1, 0.16, 0.0001],
   front: [0.0001, 0.1, 1],
@@ -201,6 +202,8 @@ function renderSpecs() {
   } else if (entry.kind === 'soldier') {
     rows.push(['Фракция', info.factionName], ['Рост', `${number(size.y)} м`], ['Кости', info.bones]);
     rows.push(['Анимации', (model.animations ?? []).length]);
+  } else if (entry.kind === 'scene') {
+    rows.push(['Моделей', info.models], ['Сторон', 2], ['Оружия', 4]);
   } else {
     rows.push(['Размер', `${number(size.x * 100, 0)}×${number(size.y * 100, 0)}×${number(size.z * 100, 0)} см`]);
   }
@@ -316,6 +319,7 @@ function show(id) {
   setPointsVisible($('opt-points').checked);
   updateViewButtons();
 
+  download.hidden = noDownload || entry.kind === 'scene';
   $('title').textContent = entry.name;
   $('subtitle').textContent = `${entry.group} · ${entry.note}`;
   document.querySelectorAll('.model-button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.id === entry.id)));
@@ -371,7 +375,7 @@ $('opt-wire').addEventListener('change', (e) => setWireframe(e.target.checked));
 controls.autoRotate = $('opt-rotate').checked;
 
 const download = $('download');
-download.hidden = app.hasAttribute('data-no-download');
+const noDownload = app.hasAttribute('data-no-download'); // в песочнице без скачивания кнопку прячем
 download.addEventListener('click', async () => {
   const entry = state.entry;
   download.disabled = true;

@@ -5,6 +5,7 @@ import { createPistol } from './weapons/pistol.js';
 import { createBandage } from './items/bandage.js';
 import { createSoldier } from './soldier/soldier.js';
 import { createSoldierController, MOTIONS } from './soldier/animation.js';
+import { createLineup, createLineupController } from './lineup.js';
 import { DEG } from './kit.js';
 
 /** Раскладывает/складывает сошки (узлы bipod_leg_l / bipod_leg_r). */
@@ -63,6 +64,16 @@ const bipodOption = (foldedForward) => ({
  * create() каждый раз строит новую копию модели.
  */
 export const CATALOG = [
+  {
+    id: 'lineup',
+    kind: 'scene',
+    group: 'Обзор',
+    name: 'Все модели',
+    note: 'Обе стороны, оружие и бинт',
+    view: 'hero',
+    create: createLineup,
+    controller: createLineupController,
+  },
   {
     id: 'soldier_alliance',
     kind: 'soldier',
@@ -135,7 +146,3 @@ export const CATALOG = [
     create: createBandage,
   },
 ];
-
-export function findModel(id) {
-  return CATALOG.find((entry) => entry.id === id);
-}

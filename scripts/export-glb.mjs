@@ -33,7 +33,7 @@ await mkdir(outDir, { recursive: true });
 const only = process.argv.slice(2);
 const rows = [];
 for (const entry of CATALOG) {
-  if (only.length && !only.includes(entry.id)) continue;
+  if (entry.kind === 'scene' || (only.length && !only.includes(entry.id))) continue;
   const data = await exportGLB(entry.create());
   const file = path.join(outDir, `${entry.id}.glb`);
   await writeFile(file, Buffer.from(data));
