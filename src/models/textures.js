@@ -6,7 +6,7 @@ import * as THREE from 'three';
  * Размер — 512×512, цветов немного: в .glb они сохраняются компактным PNG.
  */
 
-function random(seed) {
+export function random(seed) {
   let s = seed >>> 0;
   return () => {
     s = (Math.imul(s, 1664525) + 1013904223) >>> 0;
@@ -15,7 +15,7 @@ function random(seed) {
 }
 
 /** Периодический value-шум: при u, v ∈ [0, 1) стыкуется сам с собой. */
-function periodicNoise(freq, seed) {
+export function periodicNoise(freq, seed) {
   const r = random(seed);
   const grid = Float32Array.from({ length: freq * freq }, r);
   const at = (i, j) => grid[(((j % freq) + freq) % freq) * freq + (((i % freq) + freq) % freq)];
@@ -37,7 +37,7 @@ function periodicNoise(freq, seed) {
 }
 
 /** Фрактальный шум из нескольких октав с искажением координат — «пятна». */
-function blobs(freq, seed, warp = 0.06) {
+export function blobs(freq, seed, warp = 0.06) {
   const octaves = [0, 1, 2].map((o) => periodicNoise(freq << o, seed + o * 977));
   const wu = periodicNoise(freq, seed + 31);
   const wv = periodicNoise(freq, seed + 57);
@@ -117,12 +117,21 @@ const PATTERNS = {
   shemagh: { tile: 0.12, make: () => shemagh(128) },
 };
 
+/**
+ * Добавить узор из другого модуля (например, текстуры карты).
+ * pattern: { tile — метров на повтор, make() → RGBA-пиксели квадратной картинки }.
+ */
+export function registerPattern(name, pattern) {
+  PATTERNS[name] ??= pattern;
+}
+
 const cache = new Map();
 
 /** Текстура по имени узора (общая для всех моделей). */
 export function patternTexture(name) {
   if (cache.has(name)) return cache.get(name);
   const pattern = PATTERNS[name];
+  if (!pattern) throw new Error(`Неизвестный узор: ${name}`);
   const data = pattern.make();
   const size = Math.round(Math.sqrt(data.length / 4));
   const texture = new THREE.DataTexture(data, size, size, THREE.RGBAFormat);

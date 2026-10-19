@@ -42,7 +42,8 @@ const pmrem = new THREE.PMREMGenerator(renderer);
 scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
 scene.environmentIntensity = 0.55;
 
-scene.add(new THREE.HemisphereLight('#e9e9e2', '#2a2d26', 1.1));
+const hemi = new THREE.HemisphereLight('#e9e9e2', '#2a2d26', 1.1);
+scene.add(hemi);
 const sun = new THREE.DirectionalLight('#fff4e4', 2.8);
 sun.castShadow = true;
 sun.shadow.mapSize.set(2048, 2048);
@@ -60,6 +61,42 @@ const ground = new THREE.Mesh(
 ground.receiveShadow = true;
 scene.add(ground);
 let grid = null;
+
+// небо для карт: купол с градиентом от горизонта к зениту
+const SKY = { horizon: new THREE.Color('#d3d8d4'), zenith: new THREE.Color('#7f9fbe') };
+const skyDome = (() => {
+  const geometry = new THREE.SphereGeometry(1800, 32, 16);
+  const colors = [];
+  const pos = geometry.attributes.position;
+  for (let i = 0; i < pos.count; i++) {
+    const t = Math.max(0, pos.getY(i) / 1800) ** 0.6;
+    const c = SKY.horizon.clone().lerp(SKY.zenith, t);
+    colors.push(c.r, c.g, c.b);
+  }
+  geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  const dome = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide, fog: false, depthWrite: false }));
+  dome.renderOrder = -1;
+  dome.visible = false;
+  scene.add(dome);
+  return dome;
+})();
+
+/** Освещение «стенда» для моделей или «улицы» для карт. */
+function setMapMode(on) {
+  skyDome.visible = on;
+  ground.visible = !on;
+  scene.background = on ? SKY.horizon : BACKGROUND;
+  scene.fog.color.copy(on ? SKY.horizon : BACKGROUND);
+  hemi.color.set(on ? '#e3ebf2' : '#e9e9e2');
+  hemi.groundColor.set(on ? '#6b6457' : '#2a2d26');
+  hemi.intensity = on ? 1.5 : 1.1;
+  sun.color.set(on ? '#fff0da' : '#fff4e4');
+  sun.intensity = on ? 3.2 : 2.8;
+  sun.shadow.mapSize.set(on ? 4096 : 2048, on ? 4096 : 2048);
+  sun.shadow.map?.dispose();
+  sun.shadow.map = null;
+  rim.visible = !on;
+}
 
 const camera = new THREE.PerspectiveCamera(35, 1, 0.01, 100);
 const controls = new OrbitControls(camera, canvas);
@@ -118,7 +155,48 @@ function anchorsOf(root) {
   return list;
 }
 
+/** Карта: камера над заданной точкой, солнце с юго-востока, тени на большом участке. */
+function frameMap() {
+  holder.position.set(0, 0, 0);
+  holder.updateMatrixWorld(true);
+  const frame = state.entry.frame ?? {};
+  const target = new THREE.Vector3(...(frame.target ?? [0, 0, 0]));
+  const radius = frame.radius ?? 60;
+  state.size = radius;
+  const MAP_VIEWS = { hero: [0.45, 0.55, 1], iso: [-0.7, 0.75, 0.75], side: [1, 0.2, 0.15], front: [0.1, 0.18, 1], top: [0.0001, 1, 0.0001] };
+  const dir = new THREE.Vector3(...(MAP_VIEWS[state.view] ?? MAP_VIEWS.hero)).normalize();
+  let distance = radius / Math.tan((camera.fov * Math.PI) / 360) * (state.view === 'top' ? 1.05 : 0.95);
+  camera.position.copy(target).addScaledVector(dir, distance);
+  if (params.get('cam') && params.get('target')) {
+    target.fromArray(params.get('target').split(',').map(Number));
+    camera.position.fromArray(params.get('cam').split(',').map(Number));
+    distance = camera.position.distanceTo(target);
+  }
+  camera.near = 0.3;
+  camera.far = 4000;
+  camera.updateProjectionMatrix();
+  controls.target.copy(target);
+  controls.minDistance = 3;
+  controls.maxDistance = radius * 6;
+  controls.update();
+
+  sun.position.copy(target).add(new THREE.Vector3(70, 95, 80));
+  sun.target.position.copy(target);
+  const s = Math.min(160, radius * 1.4);
+  Object.assign(sun.shadow.camera, { left: -s, right: s, top: s, bottom: -s, near: 1, far: 400 });
+  sun.shadow.camera.updateProjectionMatrix();
+  sun.shadow.bias = -0.0004;
+  sun.shadow.normalBias = 0.05;
+  scene.fog.near = 140;
+  scene.fog.far = 700;
+  if (grid) scene.remove(grid);
+  grid = null;
+}
+
 function frameModel() {
+  if (state.entry.kind === 'map') return frameMap();
+  sun.shadow.bias = -0.0003;
+  sun.shadow.normalBias = 0.02;
   holder.position.set(0, 0, 0);
   holder.updateMatrixWorld(true);
   const box = new THREE.Box3().setFromObject(state.model);
@@ -204,6 +282,10 @@ function renderSpecs() {
     rows.push(['Анимации', entry.clips ?? 0]);
   } else if (entry.kind === 'scene') {
     rows.push(['Моделей', info.models], ['Сторон', 2], ['Оружия', 4]);
+  } else if (entry.kind === 'map') {
+    rows.push(['Размер', `${number(size.x, 0)}×${number(size.z, 0)} м`]);
+    if (info.playable) rows.push(['Зона боя', `${info.playable[0]}×${info.playable[1]} м`]);
+    if (info.buildings) rows.push(['Зданий', info.buildings]);
   } else {
     rows.push(['Размер', `${number(size.x * 100, 0)}×${number(size.y * 100, 0)}×${number(size.z * 100, 0)} см`]);
   }
@@ -302,6 +384,7 @@ function show(id) {
   disposeModel();
   state.entry = entry;
   state.values = {};
+  setMapMode(entry.kind === 'map');
   state.model = entry.create(true); // для просмотра анимации не запекаются — позы считаются на лету
   holder.add(state.model);
   state.model.traverse((obj) => {
@@ -319,7 +402,7 @@ function show(id) {
   setPointsVisible($('opt-points').checked);
   updateViewButtons();
 
-  download.hidden = noDownload || entry.kind === 'scene';
+  download.hidden = noDownload || entry.kind === 'scene' || entry.kind === 'map';
   $('title').textContent = entry.name;
   $('subtitle').textContent = `${entry.group} · ${entry.note}`;
   document.querySelectorAll('.model-button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.id === entry.id)));
@@ -420,7 +503,10 @@ renderer.setAnimationLoop((time) => {
   controls.update();
   renderer.render(scene, camera);
   labelRenderer.render(scene, camera);
-  if (++frames === 3) window.__viewerReady = true; // для автоматических скриншотов
+  if (++frames === 3) {
+    window.__viewerReady = true; // для автоматических скриншотов
+    if (params.has('still')) renderer.setAnimationLoop(null); // ?still — дальше не перерисовывать
+  }
 });
 
 renderList();

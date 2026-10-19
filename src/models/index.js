@@ -8,6 +8,7 @@ import { createSoldier } from './soldier/soldier.js';
 import { createSoldierController, MOTIONS, CLIPS } from './soldier/animation.js';
 import { createLineup, createLineupController } from './lineup.js';
 import { bipodLegRotation } from './weapons/handling.js';
+import { createBuildingTest } from '../map/city.js';
 
 /** Раскладывает/складывает сошки (узлы bipod_leg_l / bipod_leg_r). */
 function setBipod(model, deployed, foldedForward) {
@@ -156,5 +157,16 @@ export const CATALOG = [
     note: 'Рулон марли, восстанавливает здоровье',
     view: 'iso',
     create: createBandage,
+  },
+  {
+    id: 'building_test',
+    kind: 'map',
+    dev: true,
+    group: 'Карты',
+    name: 'Тест домов',
+    note: 'Все стили',
+    view: 'hero',
+    frame: { target: [0, 6, -20], radius: 90 },
+    create: createBuildingTest,
   },
 ];
