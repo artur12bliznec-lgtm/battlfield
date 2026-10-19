@@ -90,7 +90,7 @@ func _build_ui() -> void:
 	panel.add_child(clip_list)
 
 	var hint := Label.new()
-	hint.text = "Правая кнопка мыши — вращать камеру, колесо — приблизить"
+	hint.text = "Правая кнопка мыши — вращать камеру, колесо — приблизить, Esc — меню"
 	panel.add_child(hint)
 
 
@@ -109,6 +109,10 @@ func _play(clip: String) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	var key := event as InputEventKey
+	if key and key.pressed and key.physical_keycode == KEY_ESCAPE:
+		get_tree().change_scene_to_file("res://scenes/menu.tscn")
+		return
 	var motion := event as InputEventMouseMotion
 	if motion and motion.button_mask & MOUSE_BUTTON_MASK_RIGHT:
 		yaw -= motion.relative.x * 0.3

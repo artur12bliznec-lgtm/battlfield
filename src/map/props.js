@@ -47,8 +47,8 @@ const at = (g, x, y, z) => g.translate(x, y, z);
 /* ------------------------------------------------------------------ */
 
 function wheel(b, x, y, z, r, w, burnt) {
-  if (!burnt) b.add('tire', solid(at(cyl(r, r, w, 14).rotateZ(Math.PI / 2), x, y, z), 40));
-  b.add(burnt ? 'rust' : 'metalGrey', solid(at(cyl(r * 0.58, r * 0.58, w + 0.02, 10).rotateZ(Math.PI / 2), x, burnt ? r * 0.58 : y, z), 40));
+  if (!burnt) b.add('tire', solid(at(cyl(r, r, w, 10).rotateZ(Math.PI / 2), x, y, z), 40));
+  b.add(burnt ? 'rust' : 'metalGrey', solid(at(cyl(r * 0.58, r * 0.58, w + 0.02, 7).rotateZ(Math.PI / 2), x, burnt ? r * 0.58 : y, z), 40));
 }
 
 /** Нижний край кузова с арками колёс: точки [z, y] от зада к переду. */
@@ -181,16 +181,17 @@ export function sandbags(length = 3, rows = 4, seed = 1) {
   return cached(`sandbags:${length}:${rows}:${seed}`, () => {
     const b = new MeshBuilder();
     const rnd = random(seed);
-    const bag = roundedBox(0.56, 0.17, 0.34, 0.07);
-    const data = solid(bag, 45);
+    // мешок — сплющенная «подушка»: многогранник со сглаженными нормалями
+    const bag = new THREE.IcosahedronGeometry(1, 1).scale(0.3, 0.095, 0.19);
+    const data = solid(bag, 70);
     for (let r = 0; r < rows; r++) {
       const n = Math.max(1, Math.round(length / 0.54) - (r % 2));
       const off = r % 2 ? 0.27 : 0;
       for (let k = 0; k < n; k++) {
         const x = -length / 2 + 0.27 + off + k * 0.54;
         const m = new THREE.Matrix4().compose(
-          new THREE.Vector3(x + (rnd() - 0.5) * 0.04, 0.085 + r * 0.155, (rnd() - 0.5) * 0.05),
-          new THREE.Quaternion().setFromAxisAngle(Y, (rnd() - 0.5) * 0.12),
+          new THREE.Vector3(x + (rnd() - 0.5) * 0.04, 0.08 + r * 0.15, (rnd() - 0.5) * 0.06),
+          new THREE.Quaternion().setFromEuler(new THREE.Euler((rnd() - 0.5) * 0.1, (rnd() - 0.5) * 0.25, (rnd() - 0.5) * 0.08)),
           new THREE.Vector3(1, 1, 1),
         );
         b.add(rnd() < 0.5 ? 'sandbag' : 'sandbagDark', data, m);
@@ -243,11 +244,11 @@ export function block() {
 export function streetLamp() {
   return cached('streetLamp', () => {
     const b = new MeshBuilder();
-    b.add('metalGrey', solid(at(cyl(0.12, 0.07, 7.6, 8), 0, 3.8, 0), 40));
-    b.add('metalGrey', solid(at(cyl(0.16, 0.14, 0.8, 8), 0, 0.4, 0), 40));
+    b.add('metalGrey', solid(at(cyl(0.12, 0.07, 7.6, 6), 0, 3.8, 0), 40));
+    b.add('metalGrey', solid(at(cyl(0.16, 0.14, 0.8, 6), 0, 0.4, 0), 40));
     const arm = [[0, 7.5, 0], [0, 7.95, 0.35], [0, 8.1, 0.9], [0, 8.1, 1.6]];
     for (let k = 0; k < arm.length - 1; k++) b.add('metalGrey', solid(beam(arm[k], arm[k + 1], 0.08, 0.08, [1, 0, 0])));
-    b.add('metalGrey', solid(roundedBox(0.34, 0.16, 0.7, 0.05).translate(0, 8.05, 1.85), 40));
+    b.box('metalGrey', -0.17, 7.97, 1.5, 0.17, 8.13, 2.2);
     b.box('lampGlass', -0.13, 7.95, 1.6, 0.13, 7.97, 2.1);
     return { builder: b, collision: [[-0.15, 0, -0.15, 0.15, 7.6, 0.15]] };
   });
@@ -466,7 +467,7 @@ export function tree(variant = 0, dead = false) {
       crowns.push([0, h + 1.6, 0]);
       for (const [k, c] of crowns.entries()) {
         const r = 1.3 + rnd() * 0.8;
-        const g = new THREE.IcosahedronGeometry(r, 1).scale(1, 0.82, 1).translate(c[0], c[1] + 0.3, c[2]);
+        const g = new THREE.IcosahedronGeometry(r, k === crowns.length - 1 ? 1 : 0).scale(1, 0.82, 1).translate(c[0], c[1] + 0.3, c[2]);
         b.add(mats[k % mats.length], solid(g, 0));
       }
     }

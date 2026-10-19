@@ -8,7 +8,8 @@ import { createSoldier } from './soldier/soldier.js';
 import { createSoldierController, MOTIONS, CLIPS } from './soldier/animation.js';
 import { createLineup, createLineupController } from './lineup.js';
 import { bipodLegRotation } from './weapons/handling.js';
-import { createBuildingTest } from '../map/city.js';
+import { createCity } from '../map/city.js';
+import { createBuildingTest } from '../map/test.js';
 
 /** Раскладывает/складывает сошки (узлы bipod_leg_l / bipod_leg_r). */
 function setBipod(model, deployed, foldedForward) {
@@ -75,6 +76,28 @@ export const CATALOG = [
     view: 'hero',
     create: createLineup,
     controller: createLineupController,
+  },
+  {
+    id: 'city',
+    kind: 'map',
+    group: 'Карты',
+    name: 'Город',
+    note: 'Режим «Удержание» · точка и волны',
+    view: 'hero',
+    frame: { target: [0, 0, 6], radius: 105 },
+    create: (preview) => createCity(preview),
+    options: [
+      {
+        id: 'zones',
+        type: 'toggle',
+        label: 'Точка и места появления',
+        default: true,
+        apply: (model, value) => {
+          const zones = model.getObjectByName('zones');
+          if (zones) zones.visible = value;
+        },
+      },
+    ],
   },
   {
     id: 'soldier_alliance',

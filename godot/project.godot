@@ -11,8 +11,8 @@ config_version=5
 [application]
 
 config/name="Battlfield"
-config/description="Игра в духе Battlefield: бойцы двух сторон, оружие и снаряжение"
-run/main_scene="res://scenes/showcase.tscn"
+config/description="Игра в духе Battlefield: бойцы двух сторон, оружие, снаряжение и карта «Город»"
+run/main_scene="res://scenes/menu.tscn"
 config/features=PackedStringArray("4.3", "Forward Plus")
 
 [display]

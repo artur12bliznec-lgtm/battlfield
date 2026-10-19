@@ -1,5 +1,6 @@
-// Выгружает все модели из каталога в godot/assets/models/*.glb и проверяет,
-// что каждый файл читается обратно. Запуск: npm run export [id ...]
+// Выгружает все модели из каталога в godot/assets/models/*.glb (карты — в
+// godot/assets/maps/) и проверяет, что каждый файл читается обратно.
+// Запуск: npm run export [id ...]
 import { mkdir, writeFile } from 'node:fs/promises';
 import { deflateSync } from 'node:zlib';
 import { fileURLToPath } from 'node:url';
@@ -111,14 +112,15 @@ const { CATALOG } = await import('../src/models/index.js');
 const { exportGLB } = await import('../src/models/export.js');
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
-const outDir = path.join(root, 'godot', 'assets', 'models');
-await mkdir(outDir, { recursive: true });
+const assets = path.join(root, 'godot', 'assets');
 
 const only = process.argv.slice(2);
 const rows = [];
 for (const entry of CATALOG) {
   if (entry.kind === 'scene' || entry.dev || (only.length && !only.includes(entry.id))) continue;
   const data = await exportGLB(entry.create());
+  const outDir = path.join(assets, entry.kind === 'map' ? 'maps' : 'models');
+  await mkdir(outDir, { recursive: true });
   const file = path.join(outDir, `${entry.id}.glb`);
   await writeFile(file, Buffer.from(data));
 
@@ -127,8 +129,13 @@ for (const entry of CATALOG) {
   const gltf = await loader.parseAsync(data, '');
   let triangles = 0;
   let skins = 0;
+  let colliders = 0;
   gltf.scene.traverse((node) => {
     if (!node.isMesh) return;
+    if (node.name.endsWith('-colonly')) {
+      colliders++;
+      return;
+    }
     const g = node.geometry;
     triangles += (g.index ? g.index.count : g.attributes.position.count) / 3;
     if (node.isSkinnedMesh) skins++;
@@ -139,7 +146,8 @@ for (const entry of CATALOG) {
     треугольники: triangles,
     скелет: skins ? 'да' : '—',
     анимации: gltf.animations.length,
+    коллизии: colliders || '—',
   });
 }
 console.table(rows);
-console.log(`Готово: ${path.relative(root, outDir)}/`);
+console.log(`Готово: ${path.relative(root, assets)}/`);

@@ -83,6 +83,7 @@ const skyDome = (() => {
 
 /** Освещение «стенда» для моделей или «улицы» для карт. */
 function setMapMode(on) {
+  stage.classList.toggle('map', on);
   skyDome.visible = on;
   ground.visible = !on;
   scene.background = on ? SKY.horizon : BACKGROUND;
@@ -163,7 +164,7 @@ function frameMap() {
   const target = new THREE.Vector3(...(frame.target ?? [0, 0, 0]));
   const radius = frame.radius ?? 60;
   state.size = radius;
-  const MAP_VIEWS = { hero: [0.45, 0.55, 1], iso: [-0.7, 0.75, 0.75], side: [1, 0.2, 0.15], front: [0.1, 0.18, 1], top: [0.0001, 1, 0.0001] };
+  const MAP_VIEWS = { hero: [0.45, 0.55, 1], iso: [-0.7, 0.75, 0.75], side: [1, 0.2, 0.15], front: [0.1, 0.18, 1], top: [0, 1, 0.001] };
   const dir = new THREE.Vector3(...(MAP_VIEWS[state.view] ?? MAP_VIEWS.hero)).normalize();
   let distance = radius / Math.tan((camera.fov * Math.PI) / 360) * (state.view === 'top' ? 1.05 : 0.95);
   camera.position.copy(target).addScaledVector(dir, distance);
@@ -281,9 +282,9 @@ function renderSpecs() {
     rows.push(['Фракция', info.factionName], ['Рост', `${number(size.y)} м`], ['Кости', info.bones]);
     rows.push(['Анимации', entry.clips ?? 0]);
   } else if (entry.kind === 'scene') {
-    rows.push(['Моделей', info.models], ['Сторон', 2], ['Оружия', 4]);
+    rows.push(['Моделей', info.models], ['Сторон', 2], ['Оружия', 5]);
   } else if (entry.kind === 'map') {
-    rows.push(['Размер', `${number(size.x, 0)}×${number(size.z, 0)} м`]);
+    if (info.extent) rows.push(['Город', `${info.extent[0]}×${info.extent[1]} м`]);
     if (info.playable) rows.push(['Зона боя', `${info.playable[0]}×${info.playable[1]} м`]);
     if (info.buildings) rows.push(['Зданий', info.buildings]);
   } else {
@@ -418,6 +419,7 @@ function show(id) {
 function renderList() {
   const groups = new Map();
   for (const entry of CATALOG) {
+    if (entry.dev && !params.has('dev')) continue; // служебные сцены — только с ?dev
     if (!groups.has(entry.group)) groups.set(entry.group, []);
     groups.get(entry.group).push(entry);
   }

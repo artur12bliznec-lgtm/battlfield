@@ -358,6 +358,14 @@ body {
   display: none;
 }
 
+/* Карта: под светлым небом подписи и панель — на тёмной подложке */
+.stage.map .card-title,
+.stage.map .toolbar {
+  padding: 8px 12px;
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--bg) 78%, transparent);
+}
+
 .bare #app {
   grid-template-columns: minmax(0, 1fr);
   padding: 0;

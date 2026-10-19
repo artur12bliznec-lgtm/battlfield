@@ -215,8 +215,56 @@ export class MeshBuilder {
     return n;
   }
 
+  /**
+   * Склеить одинаковые вершины (позиция, нормаль, текстурные координаты) и
+   * выбросить вырожденные треугольники. Соседние грани одной плоскости —
+   * куски стены, плиты — начинают делить вершины: файл заметно легче.
+   */
+  compact() {
+    for (const bk of this.buckets.values()) {
+      if (!bk.index.length) continue;
+      const map = new Map();
+      const position = [];
+      const normal = [];
+      const uv = [];
+      const index = [];
+      const P = bk.position;
+      const N = bk.normal;
+      const U = bk.uv;
+      const r = (v, k) => Math.round(v * k);
+      for (let t = 0; t < bk.index.length; t += 3) {
+        const [a, b, c] = [bk.index[t], bk.index[t + 1], bk.index[t + 2]];
+        const ux = P[b * 3] - P[a * 3];
+        const uy = P[b * 3 + 1] - P[a * 3 + 1];
+        const uz = P[b * 3 + 2] - P[a * 3 + 2];
+        const vx = P[c * 3] - P[a * 3];
+        const vy = P[c * 3 + 1] - P[a * 3 + 1];
+        const vz = P[c * 3 + 2] - P[a * 3 + 2];
+        const cx = uy * vz - uz * vy;
+        const cy = uz * vx - ux * vz;
+        const cz = ux * vy - uy * vx;
+        if (cx * cx + cy * cy + cz * cz < 1e-14) continue;
+        for (const i of [a, b, c]) {
+          const key = `${r(P[i * 3], 1e4)},${r(P[i * 3 + 1], 1e4)},${r(P[i * 3 + 2], 1e4)},${r(N[i * 3], 1e3)},${r(N[i * 3 + 1], 1e3)},${r(N[i * 3 + 2], 1e3)},${r(U[i * 2], 1e4)},${r(U[i * 2 + 1], 1e4)}`;
+          let k = map.get(key);
+          if (k === undefined) {
+            k = position.length / 3;
+            map.set(key, k);
+            position.push(P[i * 3], P[i * 3 + 1], P[i * 3 + 2]);
+            normal.push(N[i * 3], N[i * 3 + 1], N[i * 3 + 2]);
+            uv.push(U[i * 2], U[i * 2 + 1]);
+          }
+          index.push(k);
+        }
+      }
+      Object.assign(bk, { position, normal, uv, index });
+    }
+    return this;
+  }
+
   /** Один меш с группами по материалам (или null, если ничего не собрано). */
   build(name) {
+    this.compact();
     const used = [...this.buckets].filter(([, b]) => b.index.length);
     if (!used.length) return null;
     let vertices = 0;

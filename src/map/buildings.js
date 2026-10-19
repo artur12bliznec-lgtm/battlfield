@@ -111,7 +111,7 @@ function layoutOpenings(s, side, F, rnd) {
       out.push({
         type: 'shop', u0, u1, v0: 0, v1: gh - 1.05, floor: 0, uc: (u0 + u1) / 2,
         door: rnd() < 0.5 ? 'left' : 'right',
-        sign: rnd() < (s.signChance ?? 0.85) ? sign : null,
+        sign: !s.ruin && rnd() < (s.signChance ?? 0.85) ? sign : null,
         awning: !s.ruin && rnd() < 0.45 ? AWNINGS[Math.floor(rnd() * AWNINGS.length)] : null,
         closed: !s.ruin && rnd() < 0.15 + s.damage * 0.4,
         broken: s.ruin ? true : broken(),
@@ -180,8 +180,8 @@ function layoutOpenings(s, side, F, rnd) {
 function frame(F, mat, u0, u1, v0, v1, d, fw = 0.06) {
   const w0 = -d - 0.03;
   const w1 = -d + 0.045;
-  F.box(mat, u0, u0 + fw, v0, v1, w0, w1, 'bl');
-  F.box(mat, u1 - fw, u1, v0, v1, w0, w1, 'br');
+  F.box(mat, u0, u0 + fw, v0, v1, w0, w1, 'bltd');
+  F.box(mat, u1 - fw, u1, v0, v1, w0, w1, 'brtd');
   F.box(mat, u0 + fw, u1 - fw, v0, v0 + fw, w0, w1, 'bdlr');
   F.box(mat, u0 + fw, u1 - fw, v1 - fw, v1, w0, w1, 'btlr');
 }
@@ -234,8 +234,8 @@ function emitWindow(F, s, o, rnd, simple) {
   // наличники и сандрики
   const t = s.trim;
   if (s.surround) {
-    F.box(t, u0 - 0.13, u0, v0 - 0.05, v1, 0, 0.04, 'bd');
-    F.box(t, u1, u1 + 0.13, v0 - 0.05, v1, 0, 0.04, 'bd');
+    F.box(t, u0 - 0.13, u0, v0 - 0.05, v1, 0, 0.04, 'bdt');
+    F.box(t, u1, u1 + 0.13, v0 - 0.05, v1, 0, 0.04, 'bdt');
     F.box(t, u0 - 0.13, u1 + 0.13, v1, v1 + 0.13, 0, 0.04, 'b');
   }
   const top = v1 + (s.surround ? 0.13 : 0);
@@ -387,8 +387,8 @@ function emitBalcony(F, s, o) {
   F.box(m, u0, u0 + 0.04, top - 0.04, top, 0, depth - 0.05, 'b');
   F.box(m, u1 - 0.04, u1, top - 0.04, top, 0, depth - 0.05, 'b');
   F.box(m, u0, u1, y + 0.06, y + 0.1, depth - 0.05, depth, 'b');
-  for (let u = u0 + 0.06; u < u1 - 0.03; u += 0.14) F.box(m, u - 0.012, u + 0.012, y + 0.03, top - 0.04, depth - 0.035, depth - 0.01, 'td');
-  for (let w = 0.12; w < depth - 0.05; w += 0.14) {
+  for (let u = u0 + 0.08; u < u1 - 0.03; u += 0.19) F.box(m, u - 0.012, u + 0.012, y + 0.03, top - 0.04, depth - 0.035, depth - 0.01, 'td');
+  for (let w = 0.16; w < depth - 0.05; w += 0.19) {
     F.box(m, u0 + 0.008, u0 + 0.032, y + 0.03, top - 0.04, w - 0.012, w + 0.012, 'td');
     F.box(m, u1 - 0.032, u1 - 0.008, y + 0.03, top - 0.04, w - 0.012, w + 0.012, 'td');
   }
@@ -496,12 +496,12 @@ function emitFacade(F, s, side, rnd, keep) {
     }
   }
   // углы: руст или пилястры
-  if (s.corners === 'quoins' && !simple) {
+  if (s.corners === 'quoins' && kind === 'main') {
     let k = 0;
     for (let v = s.groundH; v < H - 0.8; v += 0.4, k++) {
       const w = k % 2 ? 0.38 : 0.56;
-      F.box(s.trim, 0, w, v, v + 0.34, 0, 0.035, 'b');
-      F.box(s.trim, L - w, L, v, v + 0.34, 0, 0.035, 'b');
+      F.box(s.trim, 0, w, v, v + 0.34, 0, 0.035, 'btd');
+      F.box(s.trim, L - w, L, v, v + 0.34, 0, 0.035, 'btd');
     }
   } else if (s.corners === 'pilasters' && !simple) {
     F.box(s.trim, 0, 0.7, s.groundH, H - 0.5, 0, 0.06, 'bd');
@@ -899,7 +899,7 @@ export function createBuilding(spec, builder = new MeshBuilder()) {
   const openings = {};
   for (const side of ['n', 'e', 's', 'w']) {
     const F = new Facade(builder, side, x0, z0, x1, z1, y);
-    if (alive) Object.assign(F, { filter: alive, chunk: 1.0 });
+    if (alive) Object.assign(F, { filter: alive, chunk: 1.3 });
     openings[side] = emitFacade(F, s, side, rnd, keep);
   }
   if (alive) return ruinInterior(builder, s, alive, rnd, openings);

@@ -111,8 +111,8 @@ const CITY = {
   hedge: { color: '#40592d', roughness: 0.95 },
 
   // --- Баррикады и мелочи ---
-  sandbag: { color: '#ad9a70', roughness: 1 },
-  sandbagDark: { color: '#948258', roughness: 1 },
+  sandbag: { color: '#d8c79c', roughness: 1, texture: 'dirt' },
+  sandbagDark: { color: '#c2b087', roughness: 1, texture: 'dirt' },
   crate: { color: '#d8bf98', roughness: 0.9, texture: 'planks' },
   ammoBox: { color: '#55603f', roughness: 0.75 },
   barrelBlue: { color: '#2f5a7c', metalness: 0.4, roughness: 0.55 },
