@@ -61,7 +61,7 @@ func equip(weapon_scene: PackedScene) -> void:
 ## одноимённые анимации оружия, перевязка — достаёт бинт в левую руку.
 func play(clip: String, blend := 0.2) -> void:
 	animator.play(clip, blend)
-	_hold_bandage(clip == "Bandage")
+	hold_bandage(clip == "Bandage")
 	if not weapon_animator:
 		return
 	if clip.ends_with("_Reload") and weapon_animator.has_animation("Reload"):
@@ -74,10 +74,11 @@ func play(clip: String, blend := 0.2) -> void:
 
 func _on_animation_finished(clip: StringName) -> void:
 	if clip == &"Bandage":
-		_hold_bandage(false)
+		hold_bandage(false)
 
 
-func _hold_bandage(on: bool) -> void:
+## Достать бинт в левую руку (on = true) или убрать его.
+func hold_bandage(on: bool) -> void:
 	if on and not _bandage:
 		_bandage = bandage_model.instantiate()
 		var tail := _bandage.find_child("tail", true, false) as Node3D
