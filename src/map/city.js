@@ -7,6 +7,7 @@ import * as P from './props.js';
 import { BLOCKS, BOUNDS, BUILDINGS, EXTENT, MODE, PLAZA, ROADS, SIDEWALK, SURFACES, groundAt } from './layout.js';
 import { dressCity } from './dressing.js';
 import { random } from '../models/textures.js';
+import { getMaterial } from '../models/materials.js';
 
 /*
  * Сборка карты «Город».
@@ -14,6 +15,9 @@ import { random } from '../models/textures.js';
  * Каждый дом — отдельный меш (Godot отсекает невидимые дома целиком), земля,
  * разметка и мелкие предметы собраны в меши по участкам 50×50 м. Координаты
  * меша считаются от его центра: так точнее сжатие вершин в движке.
+ *
+ * Техника (instance: true) — отдельные узлы: у всех копий одной модели общий
+ * меш, у машин разного цвета — общая геометрия.
  *
  * Для физики рядом лежат невидимые меши с суффиксом «-colonly»: импортёр
  * Godot превращает их в StaticBody3D с формой столкновений, а сам меш не
@@ -44,6 +48,8 @@ export class World {
     this.visualCells = new Map();
     this.collisionCells = new Map();
     this.footprints = [];
+    this.instances = []; // техника: { prop, matrix }
+    this.fx = []; // пожары и дым для движка: { kind, x, y, z, size }
   }
 
   key(x, z) {
@@ -66,6 +72,12 @@ export class World {
 
   /** Поставить предмет. y по умолчанию — земля в этой точке (дорога или тротуар). */
   place(prop, x, z, yaw = 0, { y = groundAt(x, z), scale = 1, solid = true } = {}) {
+    if (prop.instance) {
+      const m = new THREE.Matrix4().compose(new THREE.Vector3(x, y, z), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), yaw), new THREE.Vector3(scale, scale, scale));
+      this.instances.push({ prop, matrix: m });
+      if (solid) for (const box of prop.collision) P.addCollisionBox(this.collision(x, z), box, m);
+      return;
+    }
     P.placeProp(this.visual(x, z), solid ? this.collision(x, z) : null, prop, x, y, z, yaw, scale);
   }
 
@@ -330,6 +342,33 @@ function buildBackground(root, world) {
 }
 
 /* ------------------------------------------------------------------ */
+/* Техника: копии с общими мешами                                      */
+/* ------------------------------------------------------------------ */
+
+function buildInstances(root, world) {
+  const templates = new Map();
+  const counts = new Map();
+  for (const { prop, matrix } of world.instances) {
+    let template = templates.get(prop.key);
+    if (!template) {
+      template = prop.builder.build(prop.key);
+      templates.set(prop.key, template);
+    }
+    const base = Array.isArray(template.material) ? template.material : [template.material];
+    const materials = prop.remap ? base.map((m) => (prop.remap[m.name] ? getMaterial(prop.remap[m.name]) : m)) : base;
+    const mesh = new THREE.Mesh(template.geometry, materials.length === 1 ? materials[0] : materials);
+    const id = prop.key.replace(/[^a-z0-9]+/gi, '_');
+    const n = (counts.get(id) ?? 0) + 1;
+    counts.set(id, n);
+    mesh.name = `${id}_${n}`;
+    matrix.decompose(mesh.position, mesh.quaternion, mesh.scale);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    root.add(mesh);
+  }
+}
+
+/* ------------------------------------------------------------------ */
 /* Обзорные пометки режима (только в просмотрщике)                    */
 /* ------------------------------------------------------------------ */
 
@@ -379,6 +418,7 @@ export function createCity(preview = false) {
   buildBuildings(root, world);
   dressCity(world);
   buildBackground(root, world);
+  buildInstances(root, world);
 
   // флаг точки захвата — отдельный узел: игра будет перекрашивать его в цвет владельца
   const flag = P.flagCloth(2.6, 1.6).build('capture_flag');
@@ -406,7 +446,19 @@ export function createCity(preview = false) {
   bounds.box('collision', B, -2, -B, B + t, top, B);
   root.add(bounds.build('bounds-colonly'));
 
+  // отметки эффектов: пустые узлы fx_<вид>_<n>, масштаб — размер очага
+  const fx = new THREE.Group();
+  fx.name = 'fx';
+  world.fx.forEach(({ kind, x, y, z, size }, i) => {
+    const marker = new THREE.Object3D();
+    marker.name = `fx_${kind}_${i + 1}`;
+    marker.position.set(x, y, z);
+    marker.scale.setScalar(size);
+    fx.add(marker);
+  });
+  root.add(fx);
+
   if (preview) root.add(zonesOverlay());
-  root.userData = { kind: 'map', extent: [2 * EXTENT, 2 * EXTENT], playable: [2 * BOUNDS, 2 * BOUNDS], buildings: BUILDINGS.length, mode: MODE };
+  root.userData = { kind: 'map', extent: [2 * EXTENT, 2 * EXTENT], playable: [2 * BOUNDS, 2 * BOUNDS], buildings: BUILDINGS.length, vehicles: world.instances.length, fx: world.fx.length, mode: MODE };
   return root;
 }

@@ -43,7 +43,7 @@ export const PALETTE = {
 const cache = new Map();
 
 /**
- * spec: { color, metalness, roughness, emissive, texture }.
+ * spec: { color, metalness, roughness, emissive, texture, opacity }.
  * texture — имя узора из textures.js (камуфляж); color тогда служит оттенком.
  */
 function createMaterial(name, spec) {
@@ -54,6 +54,10 @@ function createMaterial(name, spec) {
     roughness: spec.roughness ?? 0.8,
   });
   if (spec.emissive) material.emissive = new THREE.Color(spec.emissive);
+  if (spec.opacity !== undefined) {
+    material.transparent = true;
+    material.opacity = spec.opacity;
+  }
   if (spec.texture) {
     material.map = patternTexture(spec.texture);
     material.userData.tile = material.map.userData.tile; // метров на один повтор узора

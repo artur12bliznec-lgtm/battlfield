@@ -272,6 +272,125 @@ function dirt(size) {
 }
 
 /* ------------------------------------------------------------------ */
+/* Металл: гарь, ржавчина, дорожная грязь                              */
+/* ------------------------------------------------------------------ */
+
+/** Сгоревший металл: пепельно-серый с ржавыми потёками и чёрной копотью. */
+function burnt(size) {
+  const g = grain(61);
+  const rustField = blobs(4, 601, 0.12);
+  const sootField = blobs(3, 613, 0.1);
+  const ashField = blobs(6, 627, 0.08);
+  const ash = hex('#5e5a56');
+  const rustColor = hex('#523426');
+  const soot = hex('#1d1b19');
+  const pale = hex('#8e8a84');
+  return image(size, (x, y) => {
+    const u = x / size;
+    const v = y / size;
+    let c = ash;
+    const r = rustField(u, v);
+    if (r > 0.52) c = mix(ash, rustColor, Math.min(0.85, (r - 0.52) * 5));
+    const s = sootField(u, v);
+    if (s > 0.5) c = mix(c, soot, Math.min(1, (s - 0.5) * 5));
+    if (ashField(u, v) > 0.66) c = mix(c, pale, 0.55);
+    return shade(c, (g(x, y) - 0.5) * 18);
+  });
+}
+
+/** Ржавое железо. */
+function rust(size) {
+  const g = grain(71);
+  const dark = blobs(5, 701, 0.1);
+  const bright = blobs(8, 709, 0.08);
+  const base = hex('#4b3327');
+  return image(size, (x, y) => {
+    const u = x / size;
+    const v = y / size;
+    let c = base;
+    const d = dark(u, v);
+    if (d > 0.5) c = mix(c, hex('#271b15'), Math.min(1, (d - 0.5) * 4));
+    if (bright(u, v) > 0.62) c = mix(c, hex('#6d4532'), 0.5);
+    return shade(c, (g(x, y) - 0.5) * 22);
+  });
+}
+
+/** Листва: светлые и тёмные «листья» — пятнышки разного размера. Цвет даёт материал. */
+function foliage(size) {
+  const g = grain(101);
+  const big = blobs(6, 1001, 0.1);
+  const r = random(1003);
+  const data = image(size, (x, y) => {
+    const k = 205 + (big(x / size, y / size) - 0.5) * 70 + (g(x, y) - 0.5) * 24;
+    return [k, k, k];
+  });
+  // листья: маленькие эллипсы — светлые сверху, тени под ними
+  const put = (x, y, v) => {
+    const i = ((((y % size) + size) % size) * size + (((x % size) + size) % size)) * 4;
+    data[i] = data[i + 1] = data[i + 2] = Math.max(0, Math.min(255, v));
+  };
+  for (let n = 0; n < 900; n++) {
+    const cx = Math.floor(r() * size);
+    const cy = Math.floor(r() * size);
+    let rx = 2 + Math.floor(r() * 3);
+    let ry = 1 + Math.floor(r() * 2);
+    if (r() < 0.5) [rx, ry] = [ry + 1, rx - 1]; // листья в разные стороны
+    const tone = r() < 0.55 ? 250 : 120;
+    for (let dy = -ry; dy <= ry; dy++) for (let dx = -rx; dx <= rx; dx++) if ((dx * dx) / (rx * rx) + (dy * dy) / (ry * ry) <= 1) put(cx + dx, cy + dy, tone - Math.abs(dx) * 6);
+    if (tone > 200) for (let dx = -rx; dx <= rx; dx++) put(cx + dx, cy + ry + 1, 110);
+  }
+  return data;
+}
+
+/** Кора: тёмно-бурая с вертикальными бороздами. */
+function bark(size) {
+  const g = grain(111);
+  const furrows = periodicNoise(16, 1101);
+  const patches = blobs(3, 1109, 0.1);
+  const base = hex('#4d3f33');
+  return image(size, (x, y) => {
+    const u = x / size;
+    const v = y / size;
+    const f = furrows(u, v * 0.12);
+    let k = (patches(u, v) - 0.5) * 30 + (g(x, y) - 0.5) * 20;
+    if (f < 0.42) k -= 34 * (0.42 - f) * 6;
+    return shade(base, k);
+  });
+}
+
+/** Камуфляж бронетехники: олива, бурые и чёрные пятна, пыль. */
+function armyCamo(size) {
+  const g = grain(91);
+  const brown = blobs(3, 901, 0.14);
+  const black = blobs(4, 911, 0.12);
+  const dust = blobs(6, 921, 0.08);
+  const olive = hex('#5d6744');
+  return image(size, (x, y) => {
+    const u = x / size;
+    const v = y / size;
+    let c = olive;
+    if (brown(u, v) > 0.56) c = hex('#5f4d36');
+    if (black(u, v) > 0.61) c = hex('#2d2e28');
+    if (dust(u, v) > 0.62) c = mix(c, hex('#8a8064'), 0.25);
+    return shade(c, (g(x, y) - 0.5) * 14);
+  });
+}
+
+/** Лёгкая грязь на краске: почти белая, краску красит материал. */
+function grime(size) {
+  const g = grain(81);
+  const smudge = blobs(3, 801, 0.1);
+  const dust = blobs(9, 809, 0.06);
+  return image(size, (x, y) => {
+    const u = x / size;
+    const v = y / size;
+    let k = 250 - Math.max(0, smudge(u, v) - 0.45) * 60 - Math.max(0, dust(u, v) - 0.6) * 40 + (g(x, y) - 0.5) * 6;
+    if (g(x + 5, y + 9) > 0.996) k -= 50; // мелкие сколы
+    return [k, k, k * 0.985];
+  });
+}
+
+/* ------------------------------------------------------------------ */
 /* Вывески: пиксельный шрифт 5×7                                       */
 /* ------------------------------------------------------------------ */
 
@@ -444,6 +563,12 @@ const CITY_PATTERNS = {
   planks: { tile: 1.6, make: () => planks(256) },
   grass: { tile: 4, make: () => grass(256) },
   dirt: { tile: 4, make: () => dirt(256) },
+  burnt: { tile: 2.5, make: () => burnt(256) },
+  rust: { tile: 1.5, make: () => rust(256) },
+  grime: { tile: 3, make: () => grime(256) },
+  armyCamo: { tile: 5, make: () => armyCamo(256) },
+  foliage: { tile: 1.4, make: () => foliage(256) },
+  bark: { tile: 1.5, make: () => bark(256) },
   signs: { tile: 1, make: signAtlas },
 };
 

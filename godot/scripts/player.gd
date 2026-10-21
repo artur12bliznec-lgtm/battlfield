@@ -59,6 +59,9 @@ var _clip := ""
 var _clip_backwards := false
 var _flash: Node3D
 var _flash_until := 0.0
+var _gun_audio: AudioStreamPlayer
+var _shots_fired := 0
+var _burst := 0
 ## Сколько секунд боец не касается земли.
 var _air_time := 0.0
 var _spawn := Transform3D.IDENTITY
@@ -101,6 +104,11 @@ func _ready() -> void:
 	camera.far = 2000.0
 	_arm.add_child(camera)
 	camera.make_current()
+
+	_gun_audio = AudioStreamPlayer.new()
+	_gun_audio.max_polyphony = 6
+	_gun_audio.volume_db = -3.0
+	add_child(_gun_audio)
 
 	for item in Arsenal.ITEMS:
 		var state: Dictionary = item.duplicate()
@@ -213,6 +221,11 @@ func _physics_process(delta: float) -> void:
 	if not blocked and Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
 		if items[slot].get("auto", false):
 			_fire()
+	# после очереди звенят гильзы
+	if _burst > 0 and now > _firing_until + 0.15:
+		if _burst >= 4:
+			Sfx.play(self, "casings", -16.0)
+		_burst = 0
 	_update_camera(delta)
 	_animate(input, now, delta)
 	if _flash and now > _flash_until:
@@ -228,6 +241,7 @@ func equip(index: int) -> void:
 		action = ""
 	slot = index
 	soldier.equip(Arsenal.scene(items[slot]))
+	_gun_audio.stream = Sfx.stream("shot_" + str(items[slot].id))
 	var anim := soldier.weapon_animator
 	if anim:
 		# не сбрасывать дорожки, которых нет в клипе: сошки при перезарядке лёжа
@@ -252,6 +266,7 @@ func reload() -> void:
 		return
 	var clip := ("Pistol_" if item.kind == "pistol" else "Rifle_") + "Reload"
 	_start("reload", soldier.animator.get_animation(clip).length)
+	Sfx.play(self, "reload_pistol" if item.kind == "pistol" else "reload_rifle", -6.0)
 	var anim := soldier.weapon_animator
 	if anim and anim.has_animation("Reload"):
 		anim.play("Reload")
@@ -267,6 +282,7 @@ func bandage() -> void:
 	aiming = false
 	_start("bandage", soldier.animator.get_animation("Bandage").length)
 	soldier.hold_bandage(true)
+	Sfx.play(self, "bandage", -8.0)
 
 
 ## Смотрит ли игрок в оптический прицел (тогда бойца не видно, а на экране — прицел).
@@ -360,9 +376,14 @@ func _fire() -> void:
 	if item.kind == "item" or action != "" or sprinting or now < _next_shot:
 		return
 	if item.ammo <= 0:
+		if now >= _next_shot:
+			Sfx.play(self, "dry_fire", -4.0)
+			_next_shot = now + 0.25
 		reload()
 		return
 	item.ammo -= 1
+	_shots_fired += 1
+	_burst += 1
 	_next_shot = now + 60.0 / float(item.rpm)
 	_firing_until = now + 0.15
 	var spread := deg_to_rad(item.spread) * (0.3 if aiming else 1.0)
@@ -370,10 +391,18 @@ func _fire() -> void:
 		spread *= 0.6
 	if Vector2(velocity.x, velocity.z).length() > 0.5:
 		spread *= 1.8
-	Effects.shoot(self, camera, spread)
+	var shot := Effects.shoot(self, camera, spread)
+	_gun_audio.pitch_scale = randf_range(0.97, 1.03)
+	_gun_audio.play()
 	if _flash:
 		_flash.visible = true
 		_flash_until = now + 0.045
+		# трассер — каждый третий патрон, у пулемёта — каждый второй
+		if _shots_fired % (2 if item.id == "machine_gun" else 3) == 0:
+			BattleFx.tracer(get_tree().current_scene, _flash.global_position, shot.end)
+	if shot.hit:
+		var sound := "ricochet_1" if randf() < 0.1 else "impact_%d" % randi_range(1, 2)
+		Sfx.play_at(get_tree().current_scene, sound, shot.end, -8.0, 4.0)
 	var anim := soldier.weapon_animator
 	if anim and anim.has_animation("Fire"):
 		anim.stop()

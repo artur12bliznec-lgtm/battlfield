@@ -184,11 +184,14 @@ export class MeshBuilder {
     }
   }
 
-  /** Перенести всё, что собрано, в другой строитель с преобразованием matrix. */
-  appendTo(target, matrix = null) {
+  /**
+   * Перенести всё, что собрано, в другой строитель с преобразованием matrix.
+   * remap — подмена материалов { было: стало } (машины разного цвета).
+   */
+  appendTo(target, matrix = null, remap = null) {
     for (const [material, bk] of this.buckets) {
       if (!bk.index.length) continue;
-      const out = target.bucket(material);
+      const out = target.bucket(remap?.[material] ?? material);
       const base = out.position.length / 3;
       const p = new THREE.Vector3();
       const n = new THREE.Vector3();

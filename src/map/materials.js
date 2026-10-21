@@ -77,7 +77,7 @@ const CITY = {
   metalDark: { color: '#2f3133', metalness: 0.6, roughness: 0.5 },
   metalGrey: { color: '#7d8186', metalness: 0.7, roughness: 0.4 },
   metalGreen: { color: '#3e5a48', metalness: 0.3, roughness: 0.6 },
-  rust: { color: '#7a4a30', metalness: 0.2, roughness: 0.9 },
+  rust: { color: '#d6ccc4', metalness: 0.3, roughness: 0.85, texture: 'rust' },
   chrome: { color: '#c9ccd0', metalness: 1, roughness: 0.2 },
   corrugatedGreen: { color: '#7f9a83', metalness: 0.3, roughness: 0.6, texture: 'corrugated' },
   corrugatedBlue: { color: '#7c97b3', metalness: 0.3, roughness: 0.6, texture: 'corrugated' },
@@ -87,28 +87,42 @@ const CITY = {
   containerBlue: { color: '#3e6a9a', metalness: 0.3, roughness: 0.6, texture: 'corrugated' },
   containerGreen: { color: '#4d7a5a', metalness: 0.3, roughness: 0.6, texture: 'corrugated' },
 
-  // --- Машины ---
-  carRed: { color: '#8e2a26', metalness: 0.45, roughness: 0.4 },
-  carBlue: { color: '#2d4f7a', metalness: 0.45, roughness: 0.4 },
-  carWhite: { color: '#d8d8d2', metalness: 0.35, roughness: 0.4 },
-  carGreen: { color: '#3f5e45', metalness: 0.45, roughness: 0.42 },
-  carBeige: { color: '#c9b48a', metalness: 0.35, roughness: 0.45 },
-  carGrey: { color: '#6b6f73', metalness: 0.5, roughness: 0.4 },
-  carYellow: { color: '#d0a131', metalness: 0.35, roughness: 0.42 },
-  carOrange: { color: '#c0612b', metalness: 0.35, roughness: 0.45 },
-  carGlass: { color: '#1a242b', metalness: 0.2, roughness: 0.1 },
+  // --- Машины: краска с лёгкой дорожной грязью ---
+  carRed: { color: '#8e2a26', metalness: 0.45, roughness: 0.38, texture: 'grime' },
+  carBlue: { color: '#2d4f7a', metalness: 0.45, roughness: 0.38, texture: 'grime' },
+  carWhite: { color: '#d8d8d2', metalness: 0.35, roughness: 0.4, texture: 'grime' },
+  carGreen: { color: '#3f5e45', metalness: 0.45, roughness: 0.4, texture: 'grime' },
+  carBeige: { color: '#c9b48a', metalness: 0.35, roughness: 0.44, texture: 'grime' },
+  carGrey: { color: '#6b6f73', metalness: 0.5, roughness: 0.38, texture: 'grime' },
+  carYellow: { color: '#d0a131', metalness: 0.35, roughness: 0.4, texture: 'grime' },
+  carOrange: { color: '#c0612b', metalness: 0.35, roughness: 0.44, texture: 'grime' },
+  busCream: { color: '#e4dcc4', metalness: 0.3, roughness: 0.45, texture: 'grime' }, // верх автобуса
+  carGlass: { color: '#1b252c', metalness: 0.3, roughness: 0.06, opacity: 0.74 }, // тонированное стекло
+  carInterior: { color: '#2b2a28', roughness: 0.9 }, // сиденья, панель
+  seatRed: { color: '#6b2a24', roughness: 0.8 }, // сиденья автобуса
+  burntInterior: { color: '#221e1b', roughness: 1 }, // выгоревший салон
+  plasticBlack: { color: '#1d1e20', roughness: 0.6 }, // бамперы, молдинги, зеркала
+  plate: { color: '#e9e8e0', roughness: 0.5 }, // номера
+  turnSignal: { color: '#d98c2b', roughness: 0.3 },
   tire: { color: '#1c1c1c', roughness: 0.95 },
   headlight: { color: '#e8e6dc', roughness: 0.2 },
   taillight: { color: '#8f1d1d', roughness: 0.3 },
-  burnt: { color: '#57504a', metalness: 0.2, roughness: 0.95, texture: 'concrete' }, // обгоревший кузов
-  canvas: { color: '#6e6a4f', roughness: 0.95 }, // тент грузовика
+  burnt: { color: '#ffffff', metalness: 0.25, roughness: 0.9, texture: 'burnt' }, // обгоревший кузов: гарь, ржавчина, пепел
+  canvas: { color: '#6e6a4f', roughness: 0.95, texture: 'grime' }, // тент грузовика
+  armyGreen: { color: '#56603f', metalness: 0.25, roughness: 0.7, texture: 'grime' }, // армейская техника
+  armyCamo: { color: '#ffffff', metalness: 0.25, roughness: 0.75, texture: 'armyCamo' }, // броня в камуфляже
+  glassDark: { color: '#10171b', metalness: 0.3, roughness: 0.12 }, // смотровые блоки, прожектор
+  rubberSkirt: { color: '#27292a', roughness: 0.9 }, // резиновые экраны танка
+  armyDark: { color: '#3c4330', metalness: 0.3, roughness: 0.7, texture: 'grime' },
+  track: { color: '#3a3733', metalness: 0.6, roughness: 0.7, texture: 'rust' }, // гусеницы, катки
 
   // --- Природа ---
-  leaves: { color: '#55703a', roughness: 0.9 },
-  leavesLight: { color: '#6b8545', roughness: 0.9 },
-  leavesDry: { color: '#8a7f45', roughness: 0.9 },
-  bark: { color: '#4b3c2f', roughness: 0.95 },
-  hedge: { color: '#40592d', roughness: 0.95 },
+  leaves: { color: '#5d7a3e', roughness: 0.9, texture: 'foliage' },
+  leavesLight: { color: '#748f4a', roughness: 0.9, texture: 'foliage' },
+  leavesDark: { color: '#4a6533', roughness: 0.9, texture: 'foliage' },
+  leavesDry: { color: '#8f8248', roughness: 0.9, texture: 'foliage' },
+  bark: { color: '#ffffff', roughness: 0.95, texture: 'bark' },
+  hedge: { color: '#46612f', roughness: 0.95, texture: 'foliage' },
 
   // --- Баррикады и мелочи ---
   sandbag: { color: '#d8c79c', roughness: 1, texture: 'dirt' },

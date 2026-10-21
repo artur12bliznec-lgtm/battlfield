@@ -1,6 +1,6 @@
 import * as P from './props.js';
 import { createGarages } from './landmarks.js';
-import { MODE, ROADS, SIDEWALK, EXTENT, PLAZA, onRoad } from './layout.js';
+import { MODE, ROADS, SIDEWALK, EXTENT, PLAZA, onRoad, groundAt } from './layout.js';
 import { CAR_PAINTS } from './materials.js';
 import { random } from '../models/textures.js';
 
@@ -23,6 +23,16 @@ function randomCar(burnt = 0.3) {
   const t = rnd();
   if (t < 0.15) return P.van(pick(['carGreen', 'carBeige', 'carWhite']), b);
   return P.car(t < 0.6 ? 'sedan' : 'hatch', pick(CAR_PAINTS), b);
+}
+
+/**
+ * Подбитая техника: поставить и отметить для эффектов — fire (горит), smoke
+ * (тлеет) или ничего. h — высота очага над землёй, size — размер.
+ */
+function wreck(w, prop, x, z, yaw, { fx = null, h = 0.8, size = 1, footprint = 0 } = {}) {
+  w.place(prop, x, z, yaw);
+  if (fx) w.fx.push({ kind: fx, x, y: groundAt(x, z) + h, z, size });
+  if (footprint) w.footprints.push([x - footprint, z - footprint, x + footprint, z + footprint]);
 }
 
 /** Пересекает ли точка (вдоль дороги r, координата a) другую дорогу — с запасом m. */
@@ -64,8 +74,8 @@ function plaza(w) {
   // следы боя на площади
   w.place(P.crater(2.1, 3), 13, -8, 0, { solid: false });
   w.place(P.crater(1.6, 4), -14, 11, 0, { solid: false });
-  w.place(P.car('sedan', 'carWhite', true), 17, 10, 28 * DEG);
-  w.place(P.car('hatch', 'carRed', true), -17.5, -10.5, 118 * DEG);
+  wreck(w, P.car('sedan', 'carWhite', true), 17, 10, 28 * DEG, { fx: 'fire', size: 0.8 });
+  wreck(w, P.car('hatch', 'carRed', true), -17.5, -10.5, 118 * DEG, { fx: 'smoke', size: 0.7 });
   w.place(P.rubble(11, 1.6, 0.8), -22, -21, 0);
   w.place(P.rubble(12, 1.4, 0.7), 24, -22, 0);
 }
@@ -73,7 +83,7 @@ function plaza(w) {
 /** Баррикады на въездах на площадь и линии укрытий на подступах. */
 function barricades(w) {
   // юг: проспект
-  w.place(P.bus('carYellow', true), -1, 33, 72 * DEG);
+  wreck(w, P.bus('carYellow', true), -1, 33, 72 * DEG, { fx: 'smoke', h: 1.6, size: 1.2 });
   w.place(P.jersey(), 5.2, 27.5, 8 * DEG);
   w.place(P.jersey(), -4.6, 26.4, -6 * DEG);
   w.place(P.hedgehog(), 3, 39, 20 * DEG);
@@ -85,17 +95,23 @@ function barricades(w) {
   w.place(P.block(), -33.6, 3.6, 12 * DEG);
   w.place(P.hedgehog(), -38.5, -2, 0);
   w.place(P.hedgehog(), -40.5, 2.6, 40 * DEG);
-  w.place(P.car('sedan', 'carBlue', true), -45, 0.6, 115 * DEG);
+  wreck(w, P.car('sedan', 'carBlue', true), -45, 0.6, 115 * DEG, { fx: 'fire', size: 0.8 });
+  // подбитый БТР на подходе по Садовой
+  wreck(w, P.apc(true), -53, 2.6, 96 * DEG, { fx: 'fire', h: 1.6, size: 1.1, footprint: 4 });
   // восток: улица Рыночная
   w.place(P.jersey(), 33, -2.6, 90 * DEG);
   w.place(P.jersey(), 34.6, 2.6, 102 * DEG);
   w.place(P.sandbags(3, 6, 21), 31.3, 0.2, 90 * DEG);
   w.place(P.hedgehog(), 40, 3, 30 * DEG);
-  w.place(P.van('carBeige', true), 44, -2.2, 80 * DEG);
+  wreck(w, P.van('carBeige', true), 44, -2.2, 80 * DEG, { fx: 'smoke', h: 1.2 });
+  // танк, у которого взрывом сорвало башню: башня отлетела на тротуар
+  wreck(w, P.tank('wreck'), 54, 1.7, -82 * DEG, { fx: 'fire', h: 1.5, size: 1.4, footprint: 4 });
+  w.place(P.tankTurret(), 49.5, -6.6, 200 * DEG);
+  w.footprints.push([47, -8.5, 52, -5]);
   // север: переулки у ратуши
   w.place(P.hedgehog(), -27, -29, 15 * DEG);
   w.place(P.hedgehog(), 27, -30, -20 * DEG);
-  w.place(P.van('carGreen', true), -26.4, -37, 12 * DEG);
+  wreck(w, P.van('carGreen', true), -26.4, -37, 12 * DEG, { fx: 'smoke', h: 1.2 });
   w.place(P.sandbags(3, 6, 31), -22.6, -23.4, 0);
   w.place(P.sandbags(3, 6, 32), 22.6, -23.4, 0);
 
@@ -109,18 +125,20 @@ function barricades(w) {
   w.place(P.block(), 64, -3, 0);
   w.place(P.block(), 66.5, 0, 20 * DEG);
   w.place(P.block(), 63, 3.2, -15 * DEG);
-  w.place(P.car('sedan', 'carGrey', true), -27, -58, 12 * DEG);
+  wreck(w, P.car('sedan', 'carGrey', true), -27, -58, 12 * DEG, { fx: 'smoke', size: 0.6 });
   w.place(P.hedgehog(), 27, -56, 0);
   w.place(P.block(), 26, -60.5, 10 * DEG);
-  w.place(P.bus('carYellow', true), 72, 64.6, 94 * DEG);
-  w.place(P.truck(true), -48, -67.5, 86 * DEG);
+  wreck(w, P.bus('carYellow', true), 72, 64.6, 94 * DEG, { fx: 'fire', h: 1.6, size: 1.3 });
+  wreck(w, P.truck(true), -48, -67.5, 86 * DEG, { fx: 'smoke', h: 1.4 });
+  // сгоревший танк на проспекте, пушкой к площади
+  wreck(w, P.tank('burnt'), -3.2, 71, 172 * DEG, { fx: 'smoke', h: 2, size: 1.2, footprint: 4.5 });
 
   // у мест появления врагов — подбитая техника
-  w.place(P.truck(true), -25.8, -80, 8 * DEG);
-  w.place(P.truck(true), 28.4, -78, -10 * DEG);
-  w.place(P.truck(true), 4.6, 79, 18 * DEG);
-  w.place(P.truck(true), 79, 2.4, 96 * DEG);
-  w.place(P.van('carGreen', true), -79, -2.6, -80 * DEG);
+  wreck(w, P.truck(true), -25.8, -80, 8 * DEG, { fx: 'fire', h: 1.4, size: 1.1 });
+  wreck(w, P.truck(true), 28.4, -78, -10 * DEG, { fx: 'smoke', h: 1.4 });
+  wreck(w, P.truck(true), 4.6, 79, 18 * DEG, { fx: 'fire', h: 1.4, size: 1.1 });
+  wreck(w, P.truck(true), 79, 2.4, 96 * DEG, { fx: 'smoke', h: 1.4 });
+  wreck(w, P.van('carGreen', true), -79, -2.6, -80 * DEG, { fx: 'smoke', h: 1.2 });
 }
 
 /** Фонари, деревья, припаркованные машины, остановки, светофоры и знаки вдоль дорог. */
@@ -161,16 +179,20 @@ function streets(w) {
         for (let a = start + 4; a < end - 4; a += 6.4) {
           if (rnd() > 0.42 || nearCrossing(r, a, 9)) continue;
           const [x, z] = point(a, side * (r.half - 1.15));
-          if (nearSpawn(x, z, 5) || inPlaza(x, z)) continue;
-          w.place(randomCar(0.3), x, z, yawAlong() + (rnd() - 0.5) * 0.08);
+          if (nearSpawn(x, z, 5) || inPlaza(x, z) || !w.free(x, z, 2.2)) continue;
+          const parked = randomCar(0.3);
+          w.place(parked, x, z, yawAlong() + (rnd() - 0.5) * 0.08);
+          if (parked.key.endsWith('burnt') && rnd() < 0.35) w.fx.push({ kind: 'smoke', x, y: groundAt(x, z) + 0.8, z, size: 0.5 });
         }
       }
       // брошенные посреди дороги
       for (let n = 0; n < 2; n++) {
         const a = start + 15 + rnd() * (end - start - 30);
         const [x, z] = point(a, (rnd() - 0.5) * r.half);
-        if (nearCrossing(r, a, 9) || nearSpawn(x, z, 6) || inPlaza(x, z)) continue;
-        w.place(randomCar(0.6), x, z, rnd() * Math.PI * 2);
+        if (nearCrossing(r, a, 9) || nearSpawn(x, z, 6) || inPlaza(x, z) || !w.free(x, z, 3)) continue;
+        const abandoned = randomCar(0.6);
+        w.place(abandoned, x, z, rnd() * Math.PI * 2);
+        if (abandoned.key.endsWith('burnt')) w.fx.push({ kind: rnd() < 0.4 ? 'fire' : 'smoke', x, y: groundAt(x, z) + 0.8, z, size: 0.7 });
       }
     }
   }
@@ -200,7 +222,7 @@ function streets(w) {
 function yards(w) {
   // двор ратуши — здесь появляются защитники
   w.place(P.truck(), -13, -53.5, 3 * DEG);
-  w.place(P.truck(), 13.5, -54, -5 * DEG);
+  w.place(P.apc(), 14, -54, -4 * DEG);
   w.place(P.container('containerGreen'), 0, -59, 90 * DEG);
   for (const [x, z, yaw] of [[-5, -47.6, 0], [5.4, -47.8, 10], [-17.5, -48, 80], [17.8, -48.5, 95]]) {
     w.place(P.crate(), x, z, yaw * DEG);
@@ -269,11 +291,11 @@ function yards(w) {
   }
   for (const [x, color] of [[40, 'containerRed'], [72, 'containerBlue'], [80, 'containerGreen']]) w.place(P.container(color), x, 57.6, 90 * DEG);
   w.place(P.kiosk('РЫНОК', 'plasterMustard'), 34.5, 36, 90 * DEG);
-  w.place(P.van('carWhite', true), 60, 36, 10 * DEG);
+  wreck(w, P.van('carWhite', true), 60, 36, 10 * DEG, { fx: 'smoke', h: 1.2 });
 
   // заправка
   w.place(P.gasCanopy(), 24, 82.5, 0, { y: SIDEWALK });
-  w.place(P.car('sedan', 'carYellow', true), 19.2, 82.5, 4 * DEG);
+  wreck(w, P.car('sedan', 'carYellow', true), 19.2, 82.5, 4 * DEG, { fx: 'fire', size: 0.9 });
   w.place(P.car('hatch', 'carBlue'), 29, 84.5, 182 * DEG);
   w.place(P.tires(), 47.5, 86);
 }
@@ -289,7 +311,17 @@ function debris(w) {
   for (const [x, z] of [[-12, 63], [14, 66.6], [-33, 7.4], [33.2, -7.2], [-24, -63.4]]) w.place(P.tires(), x, z, rnd() * 6);
 }
 
+/** Пожары в домах — столбы дыма над руинами и проломленными крышами. */
+function fires(w) {
+  w.fx.push({ kind: 'column', x: -16, y: 2.5, z: 33, size: 1.6 }); // руины на углу площади
+  w.fx.push({ kind: 'column', x: 59, y: 11, z: 14, size: 1.2 }); // хозтовары
+  w.fx.push({ kind: 'column', x: -46, y: 14, z: -82, size: 1.4 }); // за кольцевой на севере
+  w.fx.push({ kind: 'fire', x: -20, y: 0.9, z: 31, size: 1.2 }); // горят обломки
+  w.fx.push({ kind: 'smoke', x: 13, y: 0.4, z: -8, size: 0.8 }); // дымит воронка на площади
+}
+
 export function dressCity(w) {
+  fires(w);
   plaza(w);
   barricades(w);
   streets(w);

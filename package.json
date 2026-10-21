@@ -8,7 +8,10 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "export": "node scripts/export-glb.mjs"
+    "export": "node scripts/export-glb.mjs",
+    "sounds": "node scripts/make-sounds.mjs",
+    "fx": "node scripts/make-fx.mjs",
+    "scene": "node scripts/make-city-scene.mjs"
   },
   "dependencies": {
     "three": "^0.186.1"

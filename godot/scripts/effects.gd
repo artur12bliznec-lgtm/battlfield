@@ -96,8 +96,8 @@ static func surface_basis(normal: Vector3) -> Basis:
 
 
 ## Выстрел через центр экрана: луч до первого препятствия, там — след.
-## spread — разброс в радианах.
-static func shoot(shooter: CollisionObject3D, camera: Camera3D, spread: float) -> void:
+## spread — разброс в радианах. Возвращает { end, hit, normal } — куда долетела пуля.
+static func shoot(shooter: CollisionObject3D, camera: Camera3D, spread: float) -> Dictionary:
 	var center := camera.get_viewport().get_visible_rect().size * 0.5
 	var origin := camera.project_ray_origin(center)
 	var direction := camera.project_ray_normal(center)
@@ -108,8 +108,10 @@ static func shoot(shooter: CollisionObject3D, camera: Camera3D, spread: float) -
 	var exclude: Array[RID] = [shooter.get_rid()]
 	query.exclude = exclude
 	var hit := shooter.get_world_3d().direct_space_state.intersect_ray(query)
-	if not hit.is_empty():
-		impact(shooter.get_tree().current_scene, hit.position, hit.normal)
+	if hit.is_empty():
+		return {"end": origin + direction * 300.0, "hit": false, "normal": Vector3.UP}
+	impact(shooter.get_tree().current_scene, hit.position, hit.normal)
+	return {"end": hit.position, "hit": true, "normal": hit.normal}
 
 
 ## След от пули (декаль) и облачко пыли в точке попадания.

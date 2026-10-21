@@ -4,6 +4,7 @@ import { MeshBuilder } from './builder.js';
 import { createBuilding } from './buildings.js';
 import { createTownHall, createChurch, createWarehouse, createChimney, createGarages } from './landmarks.js';
 import * as P from './props.js';
+import * as V from './vehicles.js';
 import { centeredMesh } from './city.js';
 
 /* Тестовая площадка для разработки: по дому каждого стиля и все предметы в ряд. */
@@ -56,6 +57,37 @@ export function createBuildingTest() {
   }
   P.placeProp(pb, null, P.gasCanopy(), 70, 0, 60, 0);
   root.add(centeredMesh(pb, 'props'));
+  root.userData = { kind: 'map' };
+  return root;
+}
+
+/** Тестовая площадка техники: верхний ряд — целая, нижний — сгоревшая. */
+export function createVehicleTest() {
+  const root = new THREE.Group();
+  root.name = 'vehicle_test';
+  const ground = new MeshBuilder();
+  ground.box('asphalt', -40, -1, -30, 40, 0, 30, 'y-');
+  root.add(centeredMesh(ground, 'ground'));
+  const rows = [
+    [[V.car('sedan', 'carRed'), 4.6], [V.car('sedan', 'carWhite'), 4.6], [V.car('hatch', 'carBlue'), 4.6], [V.car('hatch', 'carYellow'), 5.4], [V.van('carGreen'), 6], [V.truck(), 9], [V.bus('carYellow'), 8]],
+    [[V.car('sedan', 'carRed', true), 4.6], [V.car('hatch', 'carBlue', true), 4.6], [V.van('carBeige', true), 5.4], [V.truck(true), 9], [V.bus('carYellow', true), 8]],
+  ];
+  const b = new MeshBuilder();
+  rows.forEach((row, i) => {
+    let x = -12;
+    for (const [prop, step] of row) {
+      P.placeProp(b, null, prop, x, 0, i * 12 - 6, 0);
+      x += step;
+    }
+  });
+  // бронетехника
+  P.placeProp(b, null, V.apc(), -10, 0, 18, 0);
+  P.placeProp(b, null, V.apc(true), -3, 0, 18, 0);
+  P.placeProp(b, null, V.tank(), 5, 0, 18, 0);
+  P.placeProp(b, null, V.tank('wreck'), 14, 0, 18, 0);
+  P.placeProp(b, null, V.tank('burnt'), 26, 0, 18, 0);
+  P.placeProp(b, null, V.tankTurret(), 19, 0, 15, 0.6);
+  root.add(centeredMesh(b, 'vehicles'));
   root.userData = { kind: 'map' };
   return root;
 }

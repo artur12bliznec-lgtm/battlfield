@@ -24,7 +24,7 @@ function cached(key, make) {
 /** Поставить предмет: x, y, z — точка основания, yaw — поворот (рад) вокруг вертикали. */
 export function placeProp(target, collision, prop, x, y, z, yaw = 0, scale = 1) {
   const m = new THREE.Matrix4().compose(new THREE.Vector3(x, y, z), new THREE.Quaternion().setFromAxisAngle(Y, yaw), new THREE.Vector3(scale, scale, scale));
-  prop.builder.appendTo(target, m);
+  prop.builder.appendTo(target, m, prop.remap);
   if (collision) for (const box of prop.collision) addCollisionBox(collision, box, m);
   return m;
 }
@@ -43,134 +43,10 @@ const cyl = (r0, r1, h, seg = 10) => new THREE.CylinderGeometry(r1, r0, h, seg);
 const at = (g, x, y, z) => g.translate(x, y, z);
 
 /* ------------------------------------------------------------------ */
-/* Машины                                                              */
+/* Машины и бронетехника — в vehicles.js                               */
 /* ------------------------------------------------------------------ */
 
-function wheel(b, x, y, z, r, w, burnt) {
-  if (!burnt) b.add('tire', solid(at(cyl(r, r, w, 10).rotateZ(Math.PI / 2), x, y, z), 40));
-  b.add(burnt ? 'rust' : 'metalGrey', solid(at(cyl(r * 0.58, r * 0.58, w + 0.02, 7).rotateZ(Math.PI / 2), x, burnt ? r * 0.58 : y, z), 40));
-}
-
-/** Нижний край кузова с арками колёс: точки [z, y] от зада к переду. */
-function sill(y0, arches, r = 0.36) {
-  const pts = [];
-  for (const zc of arches) {
-    pts.push([zc - r, y0], [zc - r * 0.92, y0 + r * 0.5], [zc - r * 0.55, y0 + r * 0.85], [zc, y0 + r * 0.95], [zc + r * 0.55, y0 + r * 0.85], [zc + r * 0.92, y0 + r * 0.5], [zc + r, y0]);
-  }
-  return pts;
-}
-
-/**
- * Легковушка: sedan (седан «классика»), hatch (хэтчбек).
- * paint — материал краски; burnt — сгоревшая: без стёкол и шин, на дисках.
- */
-export function car(kind = 'sedan', paint = 'carRed', burnt = false) {
-  return cached(`car:${kind}:${paint}:${burnt}`, () => {
-    const b = new MeshBuilder();
-    const body = burnt ? 'burnt' : paint;
-    const L = kind === 'hatch' ? 1.86 : 2.06;
-    const wz = kind === 'hatch' ? 1.16 : 1.26;
-    const drop = burnt ? -0.13 : 0;
-    const top = kind === 'hatch'
-      ? [[L, 0.36], [L + 0.03, 0.62], [L - 0.06, 0.8], [0.95, 0.92], [-1.55, 0.98], [-L, 0.95], [-L - 0.03, 0.55], [-L + 0.02, 0.36]]
-      : [[L, 0.36], [L + 0.03, 0.62], [L - 0.05, 0.8], [1.15, 0.92], [-1.7, 0.95], [-L, 0.88], [-L - 0.03, 0.55], [-L + 0.02, 0.36]];
-    const path = [...top, ...sill(0.36, [-wz, wz])];
-    const lower = profile(path, 1.64, { bevel: 0.05, bevelSegments: 2 });
-    b.add(body, solid(lower.translate(0, drop, 0), 35));
-    const cabin = kind === 'hatch'
-      ? [[0.98, 0.9], [0.28, 1.37], [-1.32, 1.39], [-1.82, 0.96]]
-      : [[1.12, 0.9], [0.4, 1.36], [-0.95, 1.38], [-1.5, 0.93]];
-    b.add(burnt ? 'interiorDark' : 'carGlass', solid(profile(cabin, 1.34, { bevel: 0.03 }).translate(0, drop, 0), 30));
-    const roofZ = kind === 'hatch' ? [0.3, -1.3] : [0.42, -0.93];
-    b.add(body, solid(profile([[roofZ[0], 1.34], [roofZ[0] - 0.05, 1.42], [roofZ[1] + 0.03, 1.43], [roofZ[1], 1.36]], 1.38, { bevel: 0.02 }).translate(0, drop - (burnt ? 0.06 : 0), 0), 30));
-    for (const sx of [-0.68, 0.68]) {
-      b.add(body, solid(beam([sx, 0.9 + drop, cabin[0][0]], [sx, 1.37 + drop, cabin[1][0]], 0.06, 0.08)));
-      b.add(body, solid(beam([sx, 0.93 + drop, cabin[3][0]], [sx, 1.38 + drop, cabin[2][0]], 0.07, 0.1)));
-      b.box(body, sx - 0.035, 0.9 + drop, -0.32, sx + 0.035, 1.38 + drop, -0.22);
-    }
-    if (!burnt) {
-      for (const sx of [-0.55, 0.55]) {
-        b.box('headlight', sx - 0.17, 0.66, L - 0.02, sx + 0.17, 0.79, L + 0.035);
-        b.box('taillight', sx - 0.16, 0.66, -L - 0.035, sx + 0.16, 0.8, -L + 0.02);
-      }
-      b.box('metalDark', -0.36, 0.64, L - 0.02, 0.36, 0.8, L + 0.03);
-    }
-    b.box(burnt ? 'rust' : 'chrome', -0.84, 0.38 + drop, L - 0.02, 0.84, 0.5 + drop, L + 0.1);
-    b.box(burnt ? 'rust' : 'chrome', -0.84, 0.38 + drop, -L - 0.1, 0.84, 0.5 + drop, -L + 0.02);
-    for (const sz of [-wz, wz]) for (const sx of [-0.72, 0.72]) wheel(b, sx, 0.3, sz, 0.3, 0.2, burnt);
-    return { builder: b, collision: [[-0.85, 0, -L - 0.1, 0.85, 1.42 + drop, L + 0.1]] };
-  });
-}
-
-/** Микроавтобус-«буханка». */
-export function van(paint = 'carGreen', burnt = false) {
-  return cached(`van:${paint}:${burnt}`, () => {
-    const b = new MeshBuilder();
-    const body = burnt ? 'burnt' : paint;
-    const drop = burnt ? -0.2 : 0;
-    b.add(body, solid(roundedBox(1.94, 1.55, 4.36, 0.22).translate(0, 1.32 + drop, 0), 40));
-    b.add(body, solid(roundedBox(1.9, 0.5, 4.2, 0.12).translate(0, 0.72 + drop, 0), 40));
-    const glass = burnt ? 'interiorDark' : 'carGlass';
-    b.box(glass, -0.98, 1.42 + drop, -1.7, 0.98, 1.9 + drop, 1.4);
-    b.box(glass, -0.82, 1.42 + drop, 2.1, 0.82, 1.92 + drop, 2.2);
-    for (let z = -1.3; z <= 1.0; z += 0.78) b.box(body, -0.99, 1.4 + drop, z - 0.05, 0.99, 1.92 + drop, z + 0.05);
-    if (!burnt) {
-      for (const sx of [-0.62, 0.62]) b.add('headlight', solid(at(cyl(0.11, 0.11, 0.05, 10).rotateX(Math.PI / 2), sx, 0.95, 2.19), 40));
-      b.box('metalDark', -0.5, 0.82, 2.13, 0.5, 1.12, 2.2);
-    }
-    b.box(burnt ? 'rust' : 'metalDark', -0.98, 0.42 + drop, 2.1, 0.98, 0.56 + drop, 2.3);
-    for (const sz of [-1.25, 1.25]) for (const sx of [-0.8, 0.8]) wheel(b, sx, 0.38, sz, 0.38, 0.24, burnt);
-    return { builder: b, collision: [[-1.0, 0, -2.2, 1.0, 2.1 + drop, 2.3]] };
-  });
-}
-
-/** Городской автобус. */
-export function bus(paint = 'carYellow', burnt = false) {
-  return cached(`bus:${paint}:${burnt}`, () => {
-    const b = new MeshBuilder();
-    const body = burnt ? 'burnt' : paint;
-    const drop = burnt ? -0.25 : 0;
-    const L = 5.5;
-    b.box(body, -1.25, 0.42 + drop, -L, 1.25, 1.25 + drop, L);
-    b.add(body, solid(roundedBox(2.5, 0.7, 2 * L, 0.25).translate(0, 2.65 + drop, 0), 40));
-    const glass = burnt ? 'interiorDark' : 'carGlass';
-    b.box(glass, -1.22, 1.25 + drop, -L + 0.1, 1.22, 2.4 + drop, L - 0.05);
-    for (let z = -L + 0.4; z < L - 0.5; z += 1.32) b.box(body, -1.26, 1.25 + drop, z - 0.06, 1.26, 2.4 + drop, z + 0.06);
-    b.box(body, -1.26, 1.25 + drop, L - 0.35, 1.26, 1.5 + drop, L);
-    // двери справа (−X)
-    for (const z of [3.6, -0.6, -4.2]) b.box(burnt ? 'interiorDark' : 'frameDark', -1.27, 0.42 + drop, z - 0.6, -1.2, 2.4 + drop, z + 0.6);
-    if (!burnt) for (const sx of [-0.85, 0.85]) b.box('headlight', sx - 0.2, 0.75, L, sx + 0.2, 0.9, L + 0.04);
-    b.box(burnt ? 'rust' : 'metalDark', -1.27, 0.4 + drop, L - 0.05, 1.27, 0.65 + drop, L + 0.12);
-    for (const sz of [-3.4, 3.4]) for (const sx of [-1.02, 1.02]) wheel(b, sx, 0.5, sz, 0.5, 0.3, burnt);
-    return { builder: b, collision: [[-1.28, 0, -L, 1.28, 3.0 + drop, L + 0.12]] };
-  });
-}
-
-/** Военный грузовик с тентом. */
-export function truck(burnt = false) {
-  return cached(`truck:${burnt}`, () => {
-    const b = new MeshBuilder();
-    const body = burnt ? 'burnt' : 'olivePaint';
-    const drop = burnt ? -0.25 : 0;
-    // рама и кабина
-    b.box('metalDark', -0.5, 0.75 + drop, -3.3, 0.5, 1.0 + drop, 3.2);
-    b.add(body, solid(profile([[3.35, 1.05], [3.35, 1.75], [2.4, 1.95], [2.2, 1.95], [2.2, 1.05]], 1.9, { bevel: 0.05 }).translate(0, drop, 0)));
-    b.add(body, solid(roundedBox(2.3, 1.35, 1.5, 0.12).translate(0, 2.55 + drop, 1.45), 40));
-    b.box(burnt ? 'interiorDark' : 'carGlass', -1.0, 2.55 + drop, 2.18, 1.0, 3.05 + drop, 2.22);
-    b.box(burnt ? 'interiorDark' : 'carGlass', -1.16, 2.55 + drop, 1.0, 1.16, 3.0 + drop, 1.9);
-    b.box(body, -1.3, 1.6 + drop, 1.9, 1.3, 1.7 + drop, 3.3);
-    // кузов с тентом
-    b.box(body, -1.25, 1.05 + drop, -3.4, 1.25, 1.75 + drop, 0.6);
-    if (!burnt) {
-      b.box('canvas', -1.24, 1.75, -3.38, 1.24, 3.1, 0.58);
-      b.add('canvas', solid(at(cyl(1.24, 1.24, 3.96, 12, ).rotateX(Math.PI / 2), 0, 3.1, -1.4).scale(1, 0.35, 1).translate(0, 2.0, 0), 30));
-    } else {
-      for (let z = -3.2; z < 0.6; z += 0.9) b.box('rust', -1.24, 1.75 + drop, z - 0.03, 1.24, 3.0 + drop, z + 0.03);
-    }
-    for (const sz of [2.4, -1.3, -2.7]) for (const sx of [-1.0, 1.0]) wheel(b, sx, 0.55, sz, 0.55, 0.36, burnt);
-    return { builder: b, collision: [[-1.3, 0, -3.4, 1.3, 3.3 + drop, 3.4]] };
-  });
-}
+export { car, van, bus, truck, apc, tank, tankTurret } from './vehicles.js';
 
 /* ------------------------------------------------------------------ */
 /* Баррикады                                                           */
@@ -445,43 +321,96 @@ export function fence(length = 2.5, kind = 'metal') {
 /* Деревья                                                             */
 /* ------------------------------------------------------------------ */
 
-/** Лиственное дерево; variant меняет форму кроны, dead — без листвы. */
+/** Модель, которая на карте ставится копиями с общим мешем (как техника). */
+function instanced(key, make) {
+  if (!cache.has(key)) cache.set(key, { ...make(), instance: true, key });
+  return cache.get(key);
+}
+
+/** «Облако» листвы: икосаэдр с неровной поверхностью и мягкими нормалями. */
+function leafCluster(r, seed, flat = 0.8) {
+  const g = new THREE.IcosahedronGeometry(r, r >= 1 ? 2 : 1);
+  const pos = g.attributes.position;
+  const v = new THREE.Vector3();
+  const s1 = seed * 1.7;
+  const s2 = seed * 2.3;
+  const s3 = seed * 3.1;
+  for (let i = 0; i < pos.count; i++) {
+    v.fromBufferAttribute(pos, i);
+    const k = 1 + 0.16 * Math.sin(v.x * 3.1 / r + s1) * Math.cos(v.z * 2.7 / r + s2) + 0.1 * Math.sin(v.y * 4.3 / r + s3);
+    v.multiplyScalar(k);
+    v.y *= v.y < 0 ? flat * 0.75 : flat; // снизу крона площе
+    pos.setXYZ(i, v.x, v.y, v.z);
+  }
+  return solid(g, 80);
+}
+
+/** Сук от a до c: брусок-«труба» с сужением. */
+function bough(b, a, c, r0, r1) {
+  const d = new THREE.Vector3(c[0] - a[0], c[1] - a[1], c[2] - a[2]);
+  const g = new THREE.CylinderGeometry(r1, r0, d.length(), 6, 1);
+  g.translate(0, d.length() / 2, 0);
+  g.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.clone().normalize()));
+  g.translate(...a);
+  b.add('bark', solid(g, 60));
+}
+
+/**
+ * Лиственное дерево (липа, клён): изогнутый ствол, развилка, ветви с сучьями,
+ * крона из нескольких облаков листвы. variant меняет форму, dead — сухое.
+ */
 export function tree(variant = 0, dead = false) {
-  return cached(`tree:${variant}:${dead}`, () => {
+  return instanced(`tree:${variant}:${dead}`, () => {
     const b = new MeshBuilder();
     const rnd = random(100 + variant);
-    const h = 3.2 + rnd() * 1.4;
-    b.add('bark', solid(at(cyl(0.2, 0.13, h, 7), 0, h / 2, 0), 50));
-    const crowns = [];
-    const branches = 3 + Math.floor(rnd() * 2);
-    for (let k = 0; k < branches; k++) {
-      const a = (k / branches) * Math.PI * 2 + rnd();
-      const len = 1.4 + rnd() * 1.2;
-      const from = [0, h - 0.4 - rnd() * 0.8, 0];
-      const to = [Math.sin(a) * len * 0.7, from[1] + len, Math.cos(a) * len * 0.7];
-      b.add('bark', solid(beam(from, to, 0.11, 0.11, [0, 1, 0])));
-      crowns.push(to);
+    const h = 2.6 + rnd() * 1.1;
+    const lean = [(rnd() - 0.5) * 0.35, (rnd() - 0.5) * 0.35];
+    // ствол: три отрезка с лёгким изгибом и корневой «пяткой»
+    const trunk = [[0, 0, 0], [lean[0] * 0.25, h * 0.45, lean[1] * 0.25], [lean[0] * 0.7, h * 0.8, lean[1] * 0.7], [lean[0], h, lean[1]]];
+    const radii = [0.24, 0.19, 0.16, 0.14];
+    for (let k = 0; k < 3; k++) bough(b, trunk[k], trunk[k + 1], radii[k], radii[k + 1]);
+    b.add('bark', solid(new THREE.CylinderGeometry(0.2, 0.3, 0.25, 7).translate(0, 0.12, 0), 60));
+    const fork = trunk[3];
+    const clusters = [];
+    const main = (dead ? 5 : 4) + Math.floor(rnd() * 2);
+    for (let k = 0; k < main; k++) {
+      const a = (k / main) * Math.PI * 2 + rnd() * 0.8;
+      const len = 1.5 + rnd() * 1.1;
+      const up = 0.75 + rnd() * 0.35;
+      const mid = [fork[0] + Math.sin(a) * len * 0.45, fork[1] + len * up * 0.55, fork[2] + Math.cos(a) * len * 0.45];
+      const end = [fork[0] + Math.sin(a) * len * 0.8, fork[1] + len * up, fork[2] + Math.cos(a) * len * 0.8];
+      bough(b, fork, mid, 0.11, 0.08);
+      bough(b, mid, end, 0.08, 0.04);
+      // боковые сучья
+      for (let j = 0; j < 2; j++) {
+        const a2 = a + (j ? 0.9 : -0.9) + (rnd() - 0.5) * 0.4;
+        const l2 = 0.6 + rnd() * 0.5;
+        const tip = [mid[0] + Math.sin(a2) * l2, mid[1] + l2 * 0.6, mid[2] + Math.cos(a2) * l2];
+        bough(b, mid, tip, 0.05, 0.02);
+        if (!dead) clusters.push([tip, 0.75 + rnd() * 0.3]);
+      }
+      if (!dead) clusters.push([end, 1.0 + rnd() * 0.35]);
     }
     if (!dead) {
-      const mats = ['leaves', 'leavesLight', variant % 3 === 2 ? 'leavesDry' : 'leaves'];
-      crowns.push([0, h + 1.6, 0]);
-      for (const [k, c] of crowns.entries()) {
-        const r = 1.3 + rnd() * 0.8;
-        const g = new THREE.IcosahedronGeometry(r, k === crowns.length - 1 ? 1 : 0).scale(1, 0.82, 1).translate(c[0], c[1] + 0.3, c[2]);
-        b.add(mats[k % mats.length], solid(g, 0));
-      }
+      // середина кроны, чтобы не просвечивала
+      clusters.push([[fork[0], fork[1] + 1.6, fork[2]], 1.35]);
+      clusters.push([[fork[0] + 0.3, fork[1] + 2.3, fork[2] - 0.2], 1.0]);
+      const mats = ['leaves', 'leavesLight', variant % 3 === 2 ? 'leavesDry' : 'leaves', 'leavesDark'];
+      clusters.forEach(([c, r], k) => {
+        b.add(mats[k % mats.length], leafCluster(r, variant * 13 + k), new THREE.Matrix4().makeTranslation(c[0], c[1] + 0.15, c[2]));
+      });
     }
-    return { builder: b, collision: [[-0.2, 0, -0.2, 0.2, h, 0.2]] };
+    return { builder: b, collision: [[-0.22, 0, -0.22, 0.22, h, 0.22]] };
   });
 }
 
 export function bush(variant = 0) {
-  return cached(`bush:${variant}`, () => {
+  return instanced(`bush:${variant}`, () => {
     const b = new MeshBuilder();
     const rnd = random(200 + variant);
-    for (let k = 0; k < 3; k++) {
-      const g = new THREE.IcosahedronGeometry(0.55 + rnd() * 0.3, 0).scale(1, 0.75, 1).translate((rnd() - 0.5) * 0.9, 0.45, (rnd() - 0.5) * 0.9);
-      b.add(k === 1 ? 'hedge' : 'leaves', solid(g));
+    for (let k = 0; k < 4; k++) {
+      const m = new THREE.Matrix4().makeTranslation((rnd() - 0.5) * 1.0, 0.42 + rnd() * 0.15, (rnd() - 0.5) * 1.0);
+      b.add(k % 2 ? 'hedge' : 'leaves', leafCluster(0.5 + rnd() * 0.25, 40 + variant * 7 + k, 0.75), m);
     }
     return { builder: b, collision: [] };
   });

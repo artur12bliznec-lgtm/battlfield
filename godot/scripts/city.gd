@@ -4,7 +4,8 @@ extends Node3D
 ##
 ## Если игра запущена через «Играть» (Game.playing), на месте появления
 ## защитников встаёт боец игрока с интерфейсом боя. Иначе — наблюдатель
-## для осмотра карты. Отметки режима лежат в узле Mode: CapturePoint
+## для осмотра карты. В обоих случаях вокруг идёт бой (battle.gd): пожары,
+## дым, разрывы, стрельба, союзники за баррикадами. Отметки режима лежат в узле Mode: CapturePoint
 ## (Area3D), DefenderSpawns, AttackerSpawns/North|East|South|West (Marker3D).
 
 const HINT := (
@@ -13,11 +14,17 @@ const HINT := (
 )
 
 var player: Player
+var battle: Battle
 
 @onready var markers: Node3D = $Mode/Debug
 
 
 func _ready() -> void:
+	battle = Battle.new()
+	battle.map = $Map
+	battle.mode = $Mode
+	battle.team = Game.team
+	add_child(battle)
 	if Game.playing:
 		_start_game()
 	else:
