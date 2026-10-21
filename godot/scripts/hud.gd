@@ -141,7 +141,7 @@ func _build_hotbar() -> void:
 		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 		icon.custom_minimum_size = Vector2(140, 66)
 		box.add_child(icon)
-		var title := _label("%d  %s" % [i + 1, item.name], 13, Color.WHITE)
+		var title := _label("%d  %s" % [i + 1, item.get("short", item.name)], 13, Color.WHITE)
 		title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		title.clip_text = true
 		box.add_child(title)

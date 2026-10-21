@@ -92,10 +92,23 @@ func hold_bandage(on: bool) -> void:
 
 ## Повесить предмет в гнездо так, чтобы его узел grip_r совпал с гнездом.
 func _attach(item: Node3D, socket_name: String) -> void:
-	var socket := body.find_child(socket_name, true, false) as Node3D
-	socket.add_child(item)
+	_socket(socket_name).add_child(item)
 	var grip := item.find_child("grip_r", true, false) as Node3D
 	item.transform = _relative(grip, item).affine_inverse()
+
+
+## Гнездо на кисти. Пустые узлы под костями Godot при импорте делает костями
+## скелета, поэтому к такой кости цепляется BoneAttachment3D с тем же именем.
+func _socket(socket_name: String) -> Node3D:
+	var socket := body.find_child(socket_name, true, false) as Node3D
+	if socket:
+		return socket
+	var skeleton := body.find_children("*", "Skeleton3D", true, false)[0] as Skeleton3D
+	var attachment := BoneAttachment3D.new()
+	attachment.name = socket_name
+	skeleton.add_child(attachment)
+	attachment.bone_name = socket_name
+	return attachment
 
 
 ## Трансформация узла node относительно его предка root.

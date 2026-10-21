@@ -21,7 +21,7 @@ const CRAWL := 0.6
 ## На какую высоту боец сам «перешагивает» (бордюр, ступенька).
 const STEP := 0.4
 ## Высота камеры и капсулы для стойки: стоя, присев, лёжа.
-const EYE := [1.55, 1.08, 0.55]
+const EYE := [1.68, 1.15, 0.6]
 const BODY := [1.8, 1.25, 0.7]
 const PITCH_MIN := -1.25
 const PITCH_MAX := 1.1
@@ -50,6 +50,8 @@ var _shape: CollisionShape3D
 var _capsule: CapsuleShape3D
 var _yaw := 0.0
 var _pitch := 0.0
+## Игровые часы: на паузе стоят, поэтому перезарядка и перевязка тоже ждут.
+var _clock := 0.0
 var _action_until := 0.0
 var _next_shot := 0.0
 var _firing_until := 0.0
@@ -86,8 +88,8 @@ func _ready() -> void:
 	_pivot.position.y = EYE[0]
 	add_child(_pivot)
 	_arm = SpringArm3D.new()
-	_arm.position.x = 0.55  # камера над правым плечом
-	_arm.spring_length = 2.6
+	_arm.position.x = 0.62  # камера над правым плечом
+	_arm.spring_length = 2.8
 	_arm.margin = 0.2
 	var probe := SphereShape3D.new()
 	probe.radius = 0.2
@@ -164,6 +166,7 @@ func _on_key(code: Key) -> void:
 
 
 func _physics_process(delta: float) -> void:
+	_clock += delta
 	var now := _now()
 	if action != "" and now >= _action_until:
 		_finish_action()
@@ -277,7 +280,7 @@ func _look() -> void:
 
 
 func _now() -> float:
-	return Time.get_ticks_msec() / 1000.0
+	return _clock
 
 
 func _axis(plus: Key, minus: Key) -> float:
@@ -386,7 +389,7 @@ func _update_camera(delta: float) -> void:
 	var aim := aiming and action != "reload" and not sprinting
 	var fov: float = item.get("aim_fov", 70.0) if aim else 70.0
 	camera.fov = lerpf(camera.fov, fov, minf(1.0, delta * 14.0))
-	_arm.spring_length = lerpf(_arm.spring_length, 1.25 if aim else 2.6, minf(1.0, delta * 10.0))
+	_arm.spring_length = lerpf(_arm.spring_length, 1.25 if aim else 2.8, minf(1.0, delta * 10.0))
 	_pivot.position.y = lerpf(_pivot.position.y, EYE[stance], minf(1.0, delta * 8.0))
 	soldier.visible = not is_scoped()
 

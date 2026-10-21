@@ -4,3 +4,7 @@ dist/
 *.log
 # Godot: кэш импорта
 godot/.godot/
+# Godot: настройки импорта и текстуры, которые редактор извлекает из .glb
+godot/**/*.import
+godot/assets/models/*.png
+godot/assets/maps/*.png
