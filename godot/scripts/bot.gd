@@ -27,8 +27,7 @@ const EYE := 1.55
 const STEP := 0.4
 ## На перебежке останавливается стрелять, только если противник ближе.
 const CLOSE := 18.0
-## Дальше от камеры выстрелы не озвучиваются: их и так почти не слышно, а
-## сотни коротких 3D-звуков в секунду только нагружают звуковой поток.
+## Дальше от камеры выстрелы не озвучиваются: их и так почти не слышно.
 const HEAR := 110.0
 
 ## Команда: ключ из Game.TEAMS.
@@ -64,7 +63,6 @@ var _ammo := 30
 var _reload_until := 0.0
 var _flash: Node3D
 var _flash_until := 0.0
-var _audio: AudioStreamPlayer3D
 var _clip := ""
 var _shots := 0
 var _stuck_check := 0.0
@@ -78,8 +76,11 @@ var _arrived := false
 
 
 func _ready() -> void:
+	# слой 2 — бойцы (в них попадают пули), сталкиваемся только с миром (1):
+	# иначе, появившись в одной точке, бойцы выталкивают друг друга вверх и
+	# «взбираются» друг на друга; расходиться помогает агент навигации
 	collision_layer = 2
-	collision_mask = 3
+	collision_mask = 1
 	floor_max_angle = deg_to_rad(50.0)
 	floor_snap_length = 0.4
 	var capsule := CapsuleShape3D.new()
@@ -99,9 +100,6 @@ func _ready() -> void:
 	_flash = Effects.make_flash()
 	(muzzle if muzzle else soldier.weapon).add_child(_flash)
 	_ammo = weapon.capacity
-
-	_audio = Sfx.gun(self)
-	_audio.volume_db = -2.0
 
 	# агент — только чтобы расходиться с соседями; путь строим сами (_repath)
 	_agent = NavigationAgent3D.new()
@@ -413,7 +411,7 @@ func _shoot() -> void:
 	_flash_until = _time + 0.05
 	var camera := get_viewport().get_camera_3d()
 	if camera and camera.global_position.distance_to(global_position) < HEAR:
-		Sfx.shoot(_audio, "shot_" + str(weapon.id), randf_range(0.95, 1.05))
+		Sfx.play_at(self, "shot_" + str(weapon.id), _flash.global_position, -2.0, 12.0)
 
 	var muzzle := _flash.global_position
 	var aim: Vector3 = _target.aim_point()

@@ -132,7 +132,11 @@ func _reinforce() -> void:
 	var count := mini(REINFORCE_SIZE, MAX_ALLIES - alive_allies())
 	if count <= 0:
 		return
-	var spawns := marks.get_node("DefenderSpawns").get_children()
+	# не прямо в бойце игрока
+	var spawns := marks.get_node("DefenderSpawns").get_children().filter(
+		func(s: Node3D) -> bool:
+			return not player or s.global_position.distance_to(player.global_position) > 2.0
+	)
 	spawns.shuffle()
 	for k in count:
 		var spawn := spawns[k % spawns.size()] as Node3D

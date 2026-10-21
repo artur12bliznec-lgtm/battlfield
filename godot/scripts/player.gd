@@ -88,8 +88,10 @@ var _model_yaw := PI
 
 
 func _ready() -> void:
-	collision_layer = 2  # бойцы — на слое 2, стены и земля — на 1
-	collision_mask = 3
+	# бойцы — на слое 2 (в них попадают пули), стены и земля — на 1; с ботами
+	# боец не сталкивается — иначе они выталкивают друг друга вверх
+	collision_layer = 2
+	collision_mask = 1
 	_spawn = global_transform
 	_yaw = rotation.y
 	floor_max_angle = deg_to_rad(50.0)
@@ -196,7 +198,7 @@ func _respawn() -> void:
 	health = MAX_HEALTH
 	alive = true
 	collision_layer = 2
-	collision_mask = 3
+	collision_mask = 1
 	_set_stance(Stance.STAND)
 	_fill_items()
 	slot = -1

@@ -121,7 +121,8 @@ node('name="Map" parent="." instance=ExtResource("2_map")');
 
 node('name="Mode" type="Node3D" parent="."');
 const { x: cx, z: cz } = MODE.capture;
-node('name="CapturePoint" type="Area3D" parent="Mode"', { transform: transform([cx, SIDEWALK, cz]) });
+// бойцы (игрок и боты) — на слое столкновений 2
+node('name="CapturePoint" type="Area3D" parent="Mode"', { transform: transform([cx, SIDEWALK, cz]), collision_layer: '0', collision_mask: '2' });
 node('name="Shape" type="CollisionShape3D" parent="Mode/CapturePoint"', { transform: transform([0, 4, 0]), shape: 'SubResource("capture_shape")' });
 node('name="DefenderSpawns" type="Node3D" parent="Mode"');
 MODE.defenders.forEach(([x, z], i) => node(`name="Spawn${i + 1}" type="Marker3D" parent="Mode/DefenderSpawns"`, { transform: transform([x, SIDEWALK, z], 180) }));

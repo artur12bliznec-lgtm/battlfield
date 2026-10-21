@@ -58,6 +58,9 @@ var _next := {}
 var _trauma := 0.0
 var _shaking := false
 var _ash: GPUParticles3D
+## Треск пожаров: 3D-звук включается, только когда камера рядом (см. sfx.gd).
+var _crackles: Array[AudioStreamPlayer3D] = []
+var _next_crackle_check := 0.0
 
 
 func _ready() -> void:
@@ -99,6 +102,20 @@ func _process(delta: float) -> void:
 	if camera:
 		_ash.global_position = camera.global_position
 		_shake(camera, delta)
+		if _time >= _next_crackle_check:
+			_next_crackle_check = _time + 0.5
+			_update_crackles(camera.global_position)
+
+
+## Огонь трещит, только пока камера рядом: иначе 3D-плеер зря обновлял бы
+## громкость на каждом шаге микшера (см. sfx.gd).
+func _update_crackles(ear: Vector3) -> void:
+	for crackle in _crackles:
+		var near := crackle.global_position.distance_to(ear) < crackle.max_distance + 5.0
+		if near and not crackle.playing:
+			crackle.play(randf() * 5.0)
+		elif not near and crackle.playing:
+			crackle.stop()
 
 
 ## Встряхнуть камеру (0..1) — от близкого разрыва.
@@ -170,7 +187,7 @@ func _spawn_map_fx() -> void:
 			crackle.volume_db = -3.0
 			crackle.max_distance = 45.0
 			effect.add_child(crackle)
-			crackle.play(randf() * 5.0)
+			_crackles.append(crackle)
 
 
 func _spawn_far_columns() -> void:
@@ -366,7 +383,6 @@ class Ally:
 	var weapon: Dictionary
 	var soldier: Soldier
 	var _flash: Node3D
-	var _audio: AudioStreamPlayer3D
 	var _state := "cover"
 	var _until := 0.0
 	var _time := 0.0
@@ -386,8 +402,6 @@ class Ally:
 			muzzle.add_child(_flash)
 		else:
 			soldier.weapon.add_child(_flash)
-		_audio = Sfx.gun(self)
-		_audio.volume_db = -3.0
 		_enter("cover", randf_range(0.5, 4.0))
 
 	func _enter(state: String, duration: float) -> void:
@@ -430,7 +444,7 @@ class Ally:
 		_next_shot = _time + rate
 		_flash.visible = true
 		_flash_until = _time + 0.05
-		Sfx.shoot(_audio, "shot_" + str(weapon.id), randf_range(0.95, 1.05))
+		Sfx.play_at(self, "shot_" + str(weapon.id), _flash.global_position, -3.0, 12.0)
 		var muzzle := _flash.global_position
 		var forward := -global_transform.basis.z
 		var target := battle.ally_target(muzzle, forward)

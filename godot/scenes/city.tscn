@@ -113,6 +113,8 @@ directional_shadow_max_distance = 220.0
 
 [node name="CapturePoint" type="Area3D" parent="Mode"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.15, 0)
+collision_layer = 0
+collision_mask = 2
 
 [node name="Shape" type="CollisionShape3D" parent="Mode/CapturePoint"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4, 0)

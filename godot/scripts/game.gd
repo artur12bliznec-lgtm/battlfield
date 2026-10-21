@@ -36,6 +36,10 @@ var playing := false
 var duration := 180.0
 
 
+func _ready() -> void:
+	Sfx.setup(self)  # шины и плееры звуков мира
+
+
 func play(team_id: String) -> void:
 	team = team_id
 	playing = true
@@ -56,6 +60,7 @@ func menu() -> void:
 
 
 func _go(path: String) -> void:
+	Sfx.silence()
 	get_tree().paused = false
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	get_tree().change_scene_to_file(path)
