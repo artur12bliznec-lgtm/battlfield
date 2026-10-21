@@ -1,12 +1,18 @@
 class_name Battle
 extends Node3D
-## Атмосфера боя на карте «Город». Это декорации: никого не ранит.
+## Атмосфера боя на карте «Город».
 ##
 ## Пожары, тление и столбы дыма — у отметок fx_* из карты (их расставляет
 ## генератор карты у подбитой техники и горящих домов), ещё столбы дыма — на
 ## горизонте. Вдали и рядом рвутся снаряды, слышна стрельба, в небе — трассеры
-## и осветительные ракеты, враги бьют очередями по позициям защитников, а
-## союзники за баррикадами отстреливаются. Звук: гул боя, треск огня, сирена.
+## и осветительные ракеты. Звук: гул боя, треск огня, сирена.
+##
+## При осмотре карты (decor) враги ещё и бьют очередями по позициям
+## защитников, а нарисованные союзники за баррикадами отстреливаются — это
+## декорации, никого не ранят. В режиме «Удержание» воюют настоящие бойцы
+## (hold_mode.gd), а снаряды на подступах ранят всех рядом (сигнал blast).
+
+signal blast(at: Vector3)
 
 const SPEED_OF_SOUND := 343.0
 ## Откуда идут волны врагов: дальний конец улицы → позиции защитников.
@@ -44,6 +50,8 @@ var map: Node3D
 var mode: Node3D
 ## Команда игрока: союзники — в её форме.
 var team := "alliance"
+## Декорации боя: союзники за баррикадами и обстрел их позиций.
+var decor := true
 
 var _time := 0.0
 var _next := {}
@@ -55,7 +63,8 @@ var _ash: GPUParticles3D
 func _ready() -> void:
 	_spawn_map_fx()
 	_spawn_far_columns()
-	_spawn_allies()
+	if decor:
+		_spawn_allies()
 	_ash = BattleFx.ash()
 	add_child(_ash)
 	# по частицам осколков — столкновения с землёй вокруг камеры
@@ -74,7 +83,8 @@ func _ready() -> void:
 	_schedule("far_blast", 2.0, 4.0)
 	_schedule("near_blast", 18.0, 30.0)
 	_schedule("far_fire", 1.0, 3.0)
-	_schedule("incoming", 5.0, 9.0)
+	if decor:
+		_schedule("incoming", 5.0, 9.0)
 	_schedule("sky", 6.0, 12.0)
 	_schedule("flare", 30.0, 60.0)
 	_schedule("siren", 20.0, 40.0)
@@ -205,6 +215,7 @@ func _on_near_blast() -> void:
 
 func _near_blast_hit(at: Vector3) -> void:
 	BattleFx.explosion(self, at, 1.2)
+	blast.emit(at)
 	_sound_from("explosion_near_%d" % randi_range(1, 2), at, 6.0, 25.0)
 	var d := at.distance_to(_listener())
 	shake(clampf(1.2 - d / 60.0, 0.0, 0.9))
@@ -375,15 +386,8 @@ class Ally:
 			muzzle.add_child(_flash)
 		else:
 			soldier.weapon.add_child(_flash)
-		_audio = AudioStreamPlayer3D.new()
-		_audio.stream = Sfx.stream("shot_" + str(weapon.id))
-		_audio.max_polyphony = 4
-		_audio.unit_size = 12.0
+		_audio = Sfx.gun(self)
 		_audio.volume_db = -3.0
-		_audio.attenuation_filter_cutoff_hz = 7000.0
-		_audio.attenuation_filter_db = -18.0
-		_audio.position.y = 1.4
-		add_child(_audio)
 		_enter("cover", randf_range(0.5, 4.0))
 
 	func _enter(state: String, duration: float) -> void:
@@ -426,8 +430,7 @@ class Ally:
 		_next_shot = _time + rate
 		_flash.visible = true
 		_flash_until = _time + 0.05
-		_audio.pitch_scale = randf_range(0.95, 1.05)
-		_audio.play()
+		Sfx.shoot(_audio, "shot_" + str(weapon.id), randf_range(0.95, 1.05))
 		var muzzle := _flash.global_position
 		var forward := -global_transform.basis.z
 		var target := battle.ally_target(muzzle, forward)

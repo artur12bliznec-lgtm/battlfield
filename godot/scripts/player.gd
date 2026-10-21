@@ -8,6 +8,14 @@ extends CharacterBody3D
 ##
 ## Ходьба и бег в клипах сделаны на месте, бойца двигает код. Скорости ниже
 ## совпадают с шагом в анимации — ноги не скользят.
+##
+## Здоровье 100: пули врагов отнимают его, бинт возвращает 50. Убит — через
+## 5 секунд боец снова появляется во дворе ратуши с полным боекомплектом.
+
+signal hurt(amount: float, from: Vector3)
+signal hit_enemy(kill: bool)
+signal killed
+signal respawned
 
 enum Stance { STAND, CROUCH, PRONE }
 
@@ -25,6 +33,11 @@ const EYE := [1.68, 1.15, 0.6]
 const BODY := [1.8, 1.25, 0.7]
 const PITCH_MIN := -1.25
 const PITCH_MAX := 1.1
+const MAX_HEALTH := 100.0
+const RESPAWN_TIME := 5.0
+const BANDAGE_HEAL := 50.0
+## Куда целятся враги — грудь для каждой стойки.
+const CHEST := [1.35, 0.95, 0.35]
 
 ## Команда: ключ из Game.TEAMS.
 var team := "alliance"
@@ -41,6 +54,12 @@ var action := ""
 var on_point := false
 ## Открыто меню или инвентарь — боец не слушает клавиши и мышь.
 var blocked := false
+var health := MAX_HEALTH
+var alive := true
+## Где появляться снова (места защитников); пусто — там же, где в начале.
+var spawns: Array[Node3D] = []
+## Когда снова появится (по игровым часам), пока убит.
+var respawn_at := 0.0
 
 var soldier: Soldier
 var camera: Camera3D
@@ -69,6 +88,8 @@ var _model_yaw := PI
 
 
 func _ready() -> void:
+	collision_layer = 2  # бойцы — на слое 2, стены и земля — на 1
+	collision_mask = 3
 	_spawn = global_transform
 	_yaw = rotation.y
 	floor_max_angle = deg_to_rad(50.0)
@@ -110,18 +131,82 @@ func _ready() -> void:
 	_gun_audio.volume_db = -3.0
 	add_child(_gun_audio)
 
+	_fill_items()
+	equip(0)
+	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+
+
+## Полный боекомплект: копии Arsenal.ITEMS с патронами и бинтами.
+func _fill_items() -> void:
+	items.clear()
 	for item in Arsenal.ITEMS:
 		var state: Dictionary = item.duplicate()
 		if item.kind != "item":
 			state.ammo = item.capacity
 			state.reserve = item.capacity * item.magazines
 		items.append(state)
+
+
+## Сколько секунд до возрождения (пока убит).
+func respawn_in() -> float:
+	return maxf(0.0, respawn_at - _clock)
+
+
+## Куда целиться в бойца игрока — в грудь.
+func aim_point() -> Vector3:
+	return global_position + Vector3(0, CHEST[stance], 0)
+
+
+func take_damage(amount: float, from: Node, _at := Vector3.INF) -> void:
+	if not alive:
+		return
+	if from and from.get("team") == team:
+		return
+	health -= amount
+	hurt.emit(amount, from.global_position if from is Node3D else global_position)
+	Sfx.play(self, "hurt", -4.0, randf_range(0.9, 1.1))
+	if health <= 0.0:
+		_die()
+
+
+func _die() -> void:
+	alive = false
+	health = 0.0
+	action = ""
+	aiming = false
+	sprinting = false
+	soldier.hold_bandage(false)
+	_flash.visible = false
+	collision_layer = 0
+	collision_mask = 1
+	_clip = "dead"
+	soldier.animator.play("Death_Back" if randf() < 0.5 else "Death_Forward", 0.15)
+	respawn_at = _clock + RESPAWN_TIME
+	killed.emit()
+
+
+func _respawn() -> void:
+	var place := _spawn
+	if spawns:
+		place = spawns.pick_random().global_transform
+	global_transform = place
+	_yaw = rotation.y
+	_pitch = 0.0
+	velocity = Vector3.ZERO
+	health = MAX_HEALTH
+	alive = true
+	collision_layer = 2
+	collision_mask = 3
+	_set_stance(Stance.STAND)
+	_fill_items()
+	slot = -1
 	equip(0)
-	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	_clip = ""
+	respawned.emit()
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if blocked:
+	if blocked or not alive:
 		return
 	var motion := event as InputEventMouseMotion
 	if motion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
@@ -176,6 +261,17 @@ func _on_key(code: Key) -> void:
 func _physics_process(delta: float) -> void:
 	_clock += delta
 	var now := _now()
+	if not alive:
+		# убит: лежит, камера смотрит; потом — снова в бой
+		velocity.x = 0.0
+		velocity.z = 0.0
+		if not is_on_floor():
+			velocity.y -= GRAVITY * delta
+		move_and_slide()
+		_update_camera(delta)
+		if now >= respawn_at:
+			_respawn()
+		return
 	if action != "" and now >= _action_until:
 		_finish_action()
 	_look()
@@ -316,6 +412,7 @@ func _finish_action() -> void:
 		item.reserve -= take
 	elif action == "bandage":
 		soldier.hold_bandage(false)
+		health = minf(MAX_HEALTH, health + BANDAGE_HEAL)
 	action = ""
 
 
@@ -400,9 +497,21 @@ func _fire() -> void:
 		# трассер — каждый третий патрон, у пулемёта — каждый второй
 		if _shots_fired % (2 if item.id == "machine_gun" else 3) == 0:
 			BattleFx.tracer(get_tree().current_scene, _flash.global_position, shot.end)
-	if shot.hit:
+	var scene := get_tree().current_scene
+	var target: Object = shot.collider
+	if target and target.has_method("take_damage"):
+		if target.get("team") != team and target.get("alive"):
+			# в голову — вдвое больнее
+			var head: bool = (
+				shot.end.y - target.global_position.y > (1.0 if target.get("crouched") else 1.48)
+			)
+			target.take_damage(float(item.damage) * (2.0 if head else 1.0), self, shot.end)
+			Effects.blood(scene, shot.end, shot.normal)
+			hit_enemy.emit(not target.get("alive"))
+	elif shot.hit:
+		Effects.impact(scene, shot.end, shot.normal)
 		var sound := "ricochet_1" if randf() < 0.1 else "impact_%d" % randi_range(1, 2)
-		Sfx.play_at(get_tree().current_scene, sound, shot.end, -8.0, 4.0)
+		Sfx.play_at(scene, sound, shot.end, -8.0, 4.0)
 	var anim := soldier.weapon_animator
 	if anim and anim.has_animation("Fire"):
 		anim.stop()

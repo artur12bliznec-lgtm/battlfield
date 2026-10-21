@@ -320,6 +320,25 @@ function impact(seed) {
   return normalize(reverb(out, { rt60: 0.5, wet: 0.25 }).slice(0, out.length), 0.7);
 }
 
+/** Отметка попадания: сухой короткий «тик» (игрок попал по врагу). */
+function hitmarker() {
+  const rnd = random(61);
+  const out = samples(0.12);
+  mixIn(out, shape(bandpass(noise(Math.round(0.01 * RATE), rnd), 4800, 2.5), { attack: 0.0002, tau: 0.0018 }), 0, 1);
+  mixIn(out, tone(0.1, () => 2950, (t) => Math.exp(-t / 0.014), [1, 0.35]), 0.0005, 0.55);
+  return normalize(out, 0.8);
+}
+
+/** Пуля попала в бойца игрока: глухой удар в бронежилет. */
+function hurt() {
+  const rnd = random(63);
+  const out = samples(0.35);
+  mixIn(out, shape(lowpass(noise(Math.round(0.08 * RATE), rnd), 500), { attack: 0.0005, tau: 0.025 }), 0, 1);
+  mixIn(out, tone(0.3, (t) => 95 * Math.exp(-t * 3) + 45, (t) => Math.min(1, t / 0.003) * Math.exp(-t / 0.06)), 0, 0.9);
+  mixIn(out, shape(bandpass(noise(Math.round(0.03 * RATE), rnd), 1800, 1.2), { tau: 0.006 }), 0.002, 0.25);
+  return normalize(out, 0.85);
+}
+
 /* ------------------------------------------------------------------ */
 /* Разрывы, стрельба вдали, свист снаряда, сирена                      */
 /* ------------------------------------------------------------------ */
@@ -512,6 +531,8 @@ const SOUNDS = {
   ricochet_2: () => ricochet(56),
   impact_1: () => impact(57),
   impact_2: () => impact(58),
+  hitmarker,
+  hurt,
   // разрывы и бой вдали
   explosion_near_1: () => explosion(101),
   explosion_near_2: () => explosion(102),

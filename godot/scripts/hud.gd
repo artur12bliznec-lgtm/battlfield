@@ -1,12 +1,15 @@
 class_name Hud
 extends CanvasLayer
-## Интерфейс боя: прицел, патроны, ячейки инвентаря, расстояние до точки
-## захвата, окно инвентаря (Tab) и пауза (Esc).
+## Интерфейс боя: прицел с отметкой попадания, патроны, ячейки инвентаря,
+## расстояние до точки захвата, окно инвентаря (Tab) и пауза (Esc). Время,
+## захват, здоровье и итог боя рисует ModeHud (режим «Удержание»).
 
 const GOLD := Color(0.95, 0.75, 0.32)
 const PANEL := Color(0.07, 0.08, 0.07, 0.72)
 
 var player: Player
+## Режим «Удержание» (если идёт бой).
+var mode: HoldMode
 var _crosshair: Crosshair
 var _scope: Scope
 var _ammo: Label
@@ -43,12 +46,22 @@ func _ready() -> void:
 	_build_ammo()
 	_inventory = _build_inventory()
 	_pause = _build_pause()
+	if mode:
+		var mode_hud := ModeHud.new()
+		mode_hud.player = player
+		mode_hud.mode = mode
+		add_child(mode_hud)
+		move_child(mode_hud, _inventory.get_index())  # под инвентарём и паузой
+		mode.finished.connect(_on_finished)
+	player.hit_enemy.connect(_on_hit_enemy)
 
 
 func _input(event: InputEvent) -> void:
 	var key := event as InputEventKey
 	if not key or not key.pressed or key.echo:
 		return
+	if mode and mode.over:
+		return  # бой окончен — только кнопки итога
 	if key.physical_keycode == KEY_ESCAPE:
 		if _inventory.visible:
 			_show_inventory(false)
@@ -61,9 +74,10 @@ func _input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
 	if not player:
 		return
+	_crosshair.hit = maxf(0.0, _crosshair.hit - delta)
 	var item: Dictionary = player.items[player.slot]
 	_weapon_name.text = item.name
 	_ammo.text = "%d / %d" % [item.ammo, item.reserve]
@@ -81,7 +95,7 @@ func _process(_delta: float) -> void:
 
 	var scoped := player.is_scoped()
 	_scope.visible = scoped and not _inventory.visible
-	_crosshair.visible = not scoped and not player.blocked and not player.sprinting
+	_crosshair.visible = not scoped and not player.blocked and not player.sprinting and player.alive
 	_crosshair.gap = 7.0 + Vector2(player.velocity.x, player.velocity.z).length() * 3.0
 	if player.aiming:
 		_crosshair.gap *= 0.5
@@ -112,9 +126,9 @@ func _build_top() -> void:
 	var badge := _label("%s · Город · «Удержание»" % team.name, 18, team.color)
 	_place(badge, Control.PRESET_TOP_LEFT, Rect2(20, 14, 600, 30))
 	add_child(badge)
-	_point = _label("", 20, GOLD)
-	_point.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_place(_point, Control.PRESET_CENTER_TOP, Rect2(-300, 14, 600, 30))
+	_point = _label("", 18, GOLD)
+	_point.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_place(_point, Control.PRESET_TOP_RIGHT, Rect2(-420, 14, 400, 30))
 	add_child(_point)
 	var hint := _label("Tab — инвентарь · Esc — пауза", 15, Color(1, 1, 1, 0.85))
 	_place(hint, Control.PRESET_BOTTOM_LEFT, Rect2(20, -40, 500, 26))
@@ -316,6 +330,23 @@ func _show_pause(on: bool) -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if on else Input.MOUSE_MODE_CAPTURED
 
 
+## Бой окончен: итог (ModeHud) лежит под инвентарём — закрыть инвентарь.
+func _on_finished(_won: bool) -> void:
+	_inventory.visible = false
+	for preview in _previews:
+		preview.sway = false
+	player.blocked = true
+	player.aiming = false
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+
+
+## Попали по врагу — белая отметка в прицеле, убили — красная.
+func _on_hit_enemy(kill: bool) -> void:
+	_crosshair.hit = 0.25
+	_crosshair.kill = kill
+	Sfx.play(self, "hitmarker", -10.0 if not kill else -6.0, 1.0 if not kill else 0.8)
+
+
 func _on_card_input(event: InputEvent, index: int) -> void:
 	var click := event as InputEventMouseButton
 	# по отпусканию: иначе ещё зажатая ЛКМ сразу даст очередь из автомата
@@ -378,6 +409,9 @@ func _place(control: Control, preset: Control.LayoutPreset, rect: Rect2) -> void
 class Crosshair:
 	extends Control
 	var gap := 7.0
+	## Отметка попадания: сколько ещё показывать (с) и было ли это убийство.
+	var hit := 0.0
+	var kill := false
 
 	func _draw() -> void:
 		var c := size * 0.5
@@ -385,6 +419,10 @@ class Crosshair:
 			draw_line(c + d * gap, c + d * (gap + 9.0), Color(0, 0, 0, 0.55), 4.0)
 			draw_line(c + d * gap, c + d * (gap + 9.0), Color(1, 1, 1, 0.92), 2.0)
 		draw_circle(c, 1.6, Color(1, 1, 1, 0.92))
+		if hit > 0.0:
+			var color := Color(1, 0.25, 0.2, hit * 4.0) if kill else Color(1, 1, 1, hit * 4.0)
+			for d in [Vector2(1, 1), Vector2(-1, 1), Vector2(1, -1), Vector2(-1, -1)]:
+				draw_line(c + d * 6.0, c + d * 13.0, color, 2.5)
 
 
 ## Оптический прицел снайперки: чёрная рамка с круглым окном и сеткой.

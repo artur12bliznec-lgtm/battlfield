@@ -7,6 +7,7 @@ const MAX_MARKS := 80
 static var _flash_material: StandardMaterial3D
 static var _hole: GradientTexture2D
 static var _dust: SphereMesh
+static var _blood: SphereMesh
 static var _marks: Array = []
 
 
@@ -95,8 +96,9 @@ static func surface_basis(normal: Vector3) -> Basis:
 	return Basis(x, y, x.cross(y))
 
 
-## Выстрел через центр экрана: луч до первого препятствия, там — след.
-## spread — разброс в радианах. Возвращает { end, hit, normal } — куда долетела пуля.
+## Выстрел через центр экрана: луч до первого препятствия (стены или бойца).
+## spread — разброс в радианах. Возвращает { end, hit, normal, collider }:
+## куда долетела пуля и во что попала. След или кровь рисует вызывающий.
 static func shoot(shooter: CollisionObject3D, camera: Camera3D, spread: float) -> Dictionary:
 	var center := camera.get_viewport().get_visible_rect().size * 0.5
 	var origin := camera.project_ray_origin(center)
@@ -104,14 +106,15 @@ static func shoot(shooter: CollisionObject3D, camera: Camera3D, spread: float) -
 	var axes := camera.global_transform.basis
 	direction = direction.rotated(axes.x, randf_range(-spread, spread))
 	direction = direction.rotated(axes.y, randf_range(-spread, spread))
-	var query := PhysicsRayQueryParameters3D.create(origin, origin + direction * 900.0)
+	var query := PhysicsRayQueryParameters3D.create(origin, origin + direction * 900.0, 3)
 	var exclude: Array[RID] = [shooter.get_rid()]
 	query.exclude = exclude
 	var hit := shooter.get_world_3d().direct_space_state.intersect_ray(query)
 	if hit.is_empty():
-		return {"end": origin + direction * 300.0, "hit": false, "normal": Vector3.UP}
-	impact(shooter.get_tree().current_scene, hit.position, hit.normal)
-	return {"end": hit.position, "hit": true, "normal": hit.normal}
+		return {
+			"end": origin + direction * 300.0, "hit": false, "normal": Vector3.UP, "collider": null
+		}
+	return {"end": hit.position, "hit": true, "normal": hit.normal, "collider": hit.collider}
 
 
 ## След от пули (декаль) и облачко пыли в точке попадания.
@@ -145,3 +148,38 @@ static func impact(root: Node, point: Vector3, normal: Vector3) -> void:
 	dust.global_transform = Transform3D(axes, point + normal * 0.03)
 	dust.emitting = true
 	root.get_tree().create_timer(1.5).timeout.connect(dust.queue_free)
+
+
+## Попадание в бойца: брызги крови и пыли с формы.
+static func blood(root: Node, point: Vector3, normal: Vector3) -> void:
+	var puff := CPUParticles3D.new()
+	puff.one_shot = true
+	puff.amount = 12
+	puff.lifetime = 0.45
+	puff.explosiveness = 1.0
+	puff.direction = normal
+	puff.spread = 35.0
+	puff.initial_velocity_min = 1.0
+	puff.initial_velocity_max = 2.8
+	puff.gravity = Vector3(0, -6.0, 0)
+	puff.scale_amount_min = 0.5
+	puff.scale_amount_max = 1.2
+	puff.mesh = blood_mesh()
+	root.add_child(puff)
+	puff.global_position = point
+	puff.emitting = true
+	root.get_tree().create_timer(1.0, false).timeout.connect(puff.queue_free)
+
+
+static func blood_mesh() -> SphereMesh:
+	if _blood == null:
+		_blood = SphereMesh.new()
+		_blood.radius = 0.025
+		_blood.height = 0.05
+		_blood.radial_segments = 6
+		_blood.rings = 3
+		var material := StandardMaterial3D.new()
+		material.albedo_color = Color(0.32, 0.04, 0.03)
+		material.roughness = 0.5
+		_blood.material = material
+	return _blood

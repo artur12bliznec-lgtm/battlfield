@@ -136,7 +136,7 @@ transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 4, 0.15, -55)
 transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 9, 0.15, -52)
 
 [node name="Spawn6" type="Marker3D" parent="Mode/DefenderSpawns"]
-transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 0, 0.15, -58)
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 0, 0.15, -56.6)
 
 [node name="AttackerSpawns" type="Node3D" parent="Mode"]
 
@@ -216,6 +216,32 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -22.6, 0.15, -22.2)
 [node name="Post6" type="Marker3D" parent="Mode/AllyPosts"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 22.6, 0.15, -22.2)
 
+[node name="DefensePosts" type="Node3D" parent="Mode"]
+
+[node name="Post1" type="Marker3D" parent="Mode/DefensePosts"]
+transform = Transform3D(-0.43837, 0, -0.89879, 0, 1, 0, 0.89879, 0, -0.43837, 6.02192, 0.15, 2.93709)
+
+[node name="Post2" type="Marker3D" parent="Mode/DefensePosts"]
+transform = Transform3D(-0.89879, 0, -0.43837, 0, 1, 0, 0.43837, 0, -0.89879, 2.93709, 0.15, 6.02192)
+
+[node name="Post3" type="Marker3D" parent="Mode/DefensePosts"]
+transform = Transform3D(-0.89879, 0, 0.43837, 0, 1, 0, -0.43837, 0, -0.89879, -2.93709, 0.15, 6.02192)
+
+[node name="Post4" type="Marker3D" parent="Mode/DefensePosts"]
+transform = Transform3D(-0.43837, 0, 0.89879, 0, 1, 0, -0.89879, 0, -0.43837, -6.02192, 0.15, 2.93709)
+
+[node name="Post5" type="Marker3D" parent="Mode/DefensePosts"]
+transform = Transform3D(0.43837, 0, 0.89879, 0, 1, 0, -0.89879, 0, 0.43837, -6.02192, 0.15, -2.93709)
+
+[node name="Post6" type="Marker3D" parent="Mode/DefensePosts"]
+transform = Transform3D(0.89879, 0, 0.43837, 0, 1, 0, -0.43837, 0, 0.89879, -2.93709, 0.15, -6.02192)
+
+[node name="Post7" type="Marker3D" parent="Mode/DefensePosts"]
+transform = Transform3D(0.89879, 0, -0.43837, 0, 1, 0, 0.43837, 0, 0.89879, 2.93709, 0.15, -6.02192)
+
+[node name="Post8" type="Marker3D" parent="Mode/DefensePosts"]
+transform = Transform3D(0.43837, 0, -0.89879, 0, 1, 0, 0.89879, 0, 0.43837, 6.02192, 0.15, -2.93709)
+
 [node name="Debug" type="Node3D" parent="Mode"]
 
 [node name="CaptureZone" type="MeshInstance3D" parent="Mode/Debug"]
@@ -249,7 +275,7 @@ cast_shadow = 0
 mesh = SubResource("defender_mesh")
 
 [node name="Defender6" type="MeshInstance3D" parent="Mode/Debug"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.15, -58)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.15, -56.6)
 cast_shadow = 0
 mesh = SubResource("defender_mesh")
 

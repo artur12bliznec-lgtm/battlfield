@@ -1,6 +1,7 @@
 // Генерирует godot/scenes/city.tscn из данных планировки (src/map/layout.js):
 // окружение боя (небо в дыму, низкое солнце, туман), карту, отметки режима
-// (точка захвата, места появления), позиции союзников и наблюдателя.
+// (точка захвата, места появления, позиции союзников у въездов на площадь и
+// кольцом у памятника) и наблюдателя.
 // Запуск: npm run scene
 import { writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -142,6 +143,14 @@ const ALLY_POSTS = [
   [[22.6, SIDEWALK, -22.2], 0],
 ];
 ALLY_POSTS.forEach(([p, yaw], i) => node(`name="Post${i + 1}" type="Marker3D" parent="Mode/AllyPosts"`, { transform: transform(p, yaw) }));
+// кольцо позиций на самой точке: за дугами мешков с песком вокруг памятника
+// (дуги — по диагоналям, r = 8), лицом наружу
+node('name="DefensePosts" type="Node3D" parent="Mode"');
+[26, 64, 116, 154, 206, 244, 296, 334].forEach((deg, i) => {
+  const a = (deg * Math.PI) / 180;
+  const p = [cx + Math.cos(a) * 6.7, cz + Math.sin(a) * 6.7];
+  node(`name="Post${i + 1}" type="Marker3D" parent="Mode/DefensePosts"`, { transform: transform([p[0], SIDEWALK, p[1]], yawTo([cx, cz], p)) });
+});
 // видимые отметки (M — показать/скрыть)
 node('name="Debug" type="Node3D" parent="Mode"');
 node('name="CaptureZone" type="MeshInstance3D" parent="Mode/Debug"', { transform: transform([cx, SIDEWALK + 0.05, cz]), cast_shadow: '0', mesh: 'SubResource("zone_mesh")' });
